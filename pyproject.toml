@@ -1,0 +1,60 @@
+[project]
+name = "sheen"
+version = "0.1.0"
+description = "Ingest, validate and analyse Nigerian oil spill reports against land-cover and settlement data."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "strawberry-graphql[fastapi]",
+    "psycopg[binary,pool]",
+    "alembic",
+    "sqlalchemy",            # alembic's runtime only; queries are plain SQL via psycopg
+    "pydantic",
+    "pydantic-settings",
+    "pyyaml",
+    "httpx",
+    "structlog",
+    "typer",
+    "boto3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "testcontainers[postgres]",
+    "ruff",
+    "mypy",
+    "types-pyyaml",
+    "boto3-stubs[s3]",
+]
+
+[project.scripts]
+sheen = "sheen.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# Resolve dependencies as they stood at the end of the analysis window, so
+# the lockfile is reproducible and matches the 2005-2024 data snapshot.
+exclude-newer = "2024-12-31T00:00:00Z"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["db: needs a PostGIS container"]

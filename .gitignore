@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.env
+
+# Downloaded source data is reproducible via `sheen ingest`; never commit it.
+data/
+
+# Terraform
+infra/**/.terraform/
+infra/**/*.tfstate*
+infra/**/*.tfvars
+!infra/**/example.tfvars
+
+# Web
+web/node_modules/
+web/dist/

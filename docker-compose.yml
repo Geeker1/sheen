@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: sheen
+      POSTGRES_PASSWORD: sheen
+      POSTGRES_DB: sheen
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sheen -d sheen"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Local stand-in for S3 (raw snapshot archive).
+  s3:
+    image: localstack/localstack:3.8.1
+    environment:
+      SERVICES: s3
+    ports: ["4566:4566"]
+
+  api:
+    build: .
+    command: ["uvicorn", "sheen.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: &app-env
+      SHEEN_DATABASE_URL: postgresql://sheen:sheen@db:5432/sheen
+      SHEEN_S3_ENDPOINT_URL: http://s3:4566
+      SHEEN_S3_BUCKET: sheen-raw
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-west-1
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  # One-off pipeline runs: `docker compose run --rm pipeline sheen run`
+  pipeline:
+    build: .
+    profiles: ["pipeline"]
+    environment: *app-env
+    volumes: ["./data:/app/data"]
+    depends_on:
+      db: { condition: service_healthy }
+      s3: { condition: service_started }
+
+volumes:
+  pgdata:
