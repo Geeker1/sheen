@@ -1,0 +1,38 @@
+# Validation ruleset. Every clean.spills row records the version that produced
+# it, so changing a threshold is a new version, never an in-place edit.
+version: "v1"
+
+dates:
+  earliest_plausible: 1990-01-01   # older dates are treated as typos (e.g. "1902")
+
+quantity:
+  # Largest single spill in the register's era is Bonga (2011), ~40,000 bbl.
+  max_plausible_bbl: 50000
+
+coordinates:
+  # Nigerian grid CRSs tried when a record holds metres instead of degrees.
+  # Minna / Nigeria West, Mid, East Belt; WGS 84 / UTM 31N, 32N.
+  projected_candidate_srids: [26391, 26392, 26393, 32631, 32632]
+  # Offshore spills legitimately fall outside every state polygon. Points this
+  # close to Nigeria and south of the latitude below count as Nigerian waters.
+  # Longitude bounds keep neighbouring countries' land (Benin, Cameroon) out.
+  offshore_max_distance_km: 250
+  offshore_max_latitude: 6.5
+  offshore_lon_range: [2.7, 8.6]
+  # Exact same coordinate on this many distinct incidents suggests a default
+  # or facility location rather than the spill site.
+  reused_min_incidents: 5
+
+lga_match:
+  # pg_trgm similarity below which the reported LGA name is considered a
+  # different place from the LGA the point falls in.
+  min_similarity: 0.3
+
+state_match:
+  # A point this close to the reported state counts as being in it (GPS and
+  # boundary precision near state lines).
+  border_tolerance_m: 1000
+
+duplicates:
+  radius_m: 250
+  window_days: 3
