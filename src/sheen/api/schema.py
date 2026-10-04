@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -250,11 +251,17 @@ class Summary:
 
 
 def _from_row[T](cls: type[T], r: DictRow) -> T:
-    """Build a type from a view row, converting NUMERIC (Decimal) columns to float."""
+    """Build a type from a view row, converting NUMERIC (Decimal) columns to float.
+
+    Only constructor fields are read from the row; computed fields such as
+    LgaSummary.mangrove_change_pct are resolved by Strawberry.
+    """
     kwargs: dict[str, Any] = {}
-    for name in cls.__annotations__:
-        v = r[name]
-        kwargs[name] = float(v) if isinstance(v, Decimal) else v
+    for f in dataclasses.fields(cls):  # type: ignore[arg-type]
+        if not f.init:
+            continue
+        v = r[f.name]
+        kwargs[f.name] = float(v) if isinstance(v, Decimal) else v
     return cls(**kwargs)
 
 

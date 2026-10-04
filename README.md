@@ -114,6 +114,7 @@ run_migrations` prints the one-off migration command.
 - [DECISIONS.md](docs/DECISIONS.md): choices and the reasons for them
 - [DATA_SOURCES.md](docs/DATA_SOURCES.md): sources, licences, checks
 - [PERFORMANCE.md](docs/PERFORMANCE.md): where time goes and what was done about it
+- [TESTING.md](docs/TESTING.md): how to test and verify everything, step by step
 
 ## Data and licences
 
