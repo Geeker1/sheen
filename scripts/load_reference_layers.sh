@@ -11,7 +11,8 @@
 #   data/raw/osm/nigeria-250101.osm.pbf         OSM Nigeria as of 2025-01-01
 set -euo pipefail
 
-PG="PG:host=${PGHOST:-db} dbname=sheen user=sheen password=sheen"
+# Standard libpq variables, defaulting to the local docker-compose database.
+PG="PG:host=${PGHOST:-db} port=${PGPORT:-5432} dbname=${PGDATABASE:-sheen} user=${PGUSER:-sheen} password=${PGPASSWORD:-sheen}"
 RAW=/work/data/raw
 WORK=/work/data/work
 mkdir -p "$WORK"
