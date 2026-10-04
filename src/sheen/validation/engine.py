@@ -55,6 +55,7 @@ def validate(raw_run_id: uuid.UUID | None = None) -> str:
                 "offshore_max_lon": rules.coordinates.offshore_lon_range[1],
                 "state_tolerance_m": rules.state_match.border_tolerance_m,
                 "lga_min_similarity": rules.lga_match.min_similarity,
+                "lga_tie_break_m": rules.lga_match.tie_break_km * 1000,
                 "reused_min": rules.coordinates.reused_min_incidents,
                 "dup_radius_m": rules.duplicates.radius_m,
                 "dup_window_days": rules.duplicates.window_days,
@@ -108,20 +109,36 @@ def _write_spills(
            FROM STDIN"""
     ) as copy:
         for n in spills:
-            copy.write_row((
-                n.spill_id, run_id, raw_run_id, version, n.status, n.operator,
-                n.incident_number, n.incident_date, n.cause_code, n.cause_detail,
-                n.contaminant_code, n.habitat_codes, n.quantity_bbl, n.state_code,
-                n.lga_reported, n.site_name, n.jiv_date, "none", False,
-            ))
+            copy.write_row(
+                (
+                    n.spill_id,
+                    run_id,
+                    raw_run_id,
+                    version,
+                    n.status,
+                    n.operator,
+                    n.incident_number,
+                    n.incident_date,
+                    n.cause_code,
+                    n.cause_detail,
+                    n.contaminant_code,
+                    n.habitat_codes,
+                    n.quantity_bbl,
+                    n.state_code,
+                    n.lga_reported,
+                    n.site_name,
+                    n.jiv_date,
+                    "none",
+                    False,
+                )
+            )
 
     with cur.copy(
         "COPY clean.spill_issues (spill_id, code, severity, field, message, details) FROM STDIN"
     ) as copy:
         for n in spills:
             for i in n.issues:
-                copy.write_row((n.spill_id, i.code, i.severity.value, i.field, i.message,
-                                Jsonb(i.details)))
+                copy.write_row((n.spill_id, i.code, i.severity.value, i.field, i.message, Jsonb(i.details)))
 
     # Candidates arrive in mixed CRSs (degrees and grid metres) as EWKT;
     # PostGIS reprojects them all to WGS 84 in one statement.
@@ -132,8 +149,15 @@ def _write_spills(
     with cur.copy("COPY cands_src (spill_id, method, priority, srid, geom) FROM STDIN") as copy:
         for n in spills:
             for c in n.coord_candidates:
-                copy.write_row((n.spill_id, c.method, spatial.METHOD_PRIORITY[c.method], c.srid,
-                                f"SRID={c.srid};POINT({c.x} {c.y})"))
+                copy.write_row(
+                    (
+                        n.spill_id,
+                        c.method,
+                        spatial.METHOD_PRIORITY[c.method],
+                        c.srid,
+                        f"SRID={c.srid};POINT({c.x} {c.y})",
+                    )
+                )
     cur.execute("""
         CREATE TEMP TABLE cands ON COMMIT DROP AS
         SELECT spill_id, method, priority, srid,
@@ -142,4 +166,3 @@ def _write_spills(
         CREATE INDEX ON cands (spill_id);""")
     issue_counts = Counter(i.code for n in spills for i in n.issues)
     log.info("validate.record_checks", spills=len(spills), issues=dict(issue_counts))
-

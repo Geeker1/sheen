@@ -66,12 +66,16 @@ CATALOGUE: dict[str, IssueType] = {
         IssueType("COORD_PARTIAL", _E, "Only one of latitude/longitude present."),
         IssueType("COORD_INVALID", _E, "Coordinates are NaN, zero, or not numbers."),
         # Coordinates (raised in PostGIS)
-        IssueType("COORD_UNRESOLVED", _E,
-                  "Coordinates aren't degrees and no correction placed them in Nigeria."),
+        IssueType(
+            "COORD_UNRESOLVED", _E, "No coordinate correction lands somewhere consistent with the report."
+        ),
         IssueType("COORD_OUTSIDE_NIGERIA", _E, "Point is outside Nigeria and its waters."),
         IssueType("COORD_REPROJECTED", _I, "Recovered from projected grid metres."),
         IssueType("COORD_DECIMAL_SHIFTED", _W, "Recovered by moving a misplaced decimal point."),
         IssueType("COORD_SWAPPED", _W, "Latitude and longitude were swapped."),
+        IssueType(
+            "COORD_DMS_PARSED", _I, "Recovered from degrees-minutes-seconds written without separators."
+        ),
         IssueType("COORD_STATE_MISMATCH", _W, "Point falls in a different state from the one reported."),
         IssueType("COORD_LGA_MISMATCH", _W, "Point falls in a different LGA from the one reported."),
         IssueType("HABITAT_MISMATCH", _W, "Habitat (offshore/land) contradicts the point's location."),

@@ -75,8 +75,7 @@ def _finish(run: Run, status: str, error: str | None = None) -> None:
                SET status = %s, rows_in = %s, rows_out = %s, source_sha256 = %s,
                    details = %s, error = %s, finished_at = now()
                WHERE run_id = %s""",
-            (status, run.rows_in, run.rows_out, run.source_sha256,
-             Jsonb(run.details), error, run.run_id),
+            (status, run.rows_in, run.rows_out, run.source_sha256, Jsonb(run.details), error, run.run_id),
         )
 
 

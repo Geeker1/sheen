@@ -24,6 +24,7 @@ class CoordinateRules(BaseModel):
 
 class LgaMatchRules(BaseModel):
     min_similarity: float
+    tie_break_km: float
 
 
 class StateMatchRules(BaseModel):

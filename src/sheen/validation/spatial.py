@@ -26,12 +26,14 @@ ZONE_SQL = """
     END"""
 
 # Order in which candidate methods are trusted, all else being equal.
-METHOD_PRIORITY = {"reported": 0, "swapped": 1, "reprojected": 2, "decimal_shift": 3}
+METHOD_PRIORITY = {"reported": 0, "swapped": 1, "dms": 2, "reprojected": 3, "decimal_shift": 4}
 
 
 def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
     return [
-        ("nigeria_outline", """
+        (
+            "nigeria_outline",
+            """
             CREATE TEMP TABLE nga ON COMMIT DROP AS
             SELECT ST_Union(geom) AS geom, ST_Union(geom_utm) AS geom_utm
             FROM ref.admin_areas WHERE level = 1;
@@ -41,13 +43,26 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             CREATE TEMP TABLE nga_edge ON COMMIT DROP AS
             SELECT ST_Subdivide(ST_Boundary(geom_utm), 64) AS geom_utm FROM nga;
             CREATE INDEX ON nga_edge USING gist (geom_utm);
-        """),
-
-        ("score_candidates", """
+        """,
+        ),
+        (
+            "score_candidates",
+            """
             CREATE TEMP TABLE scored ON COMMIT DROP AS
             SELECT c.*,
-                   """ + ZONE_SQL + """ AS in_own_zone,
+                   """
+            + ZONE_SQL
+            + """ AS in_own_zone,
                    st.state_code AS landed_state,
+                   -- Is the candidate near an LGA matching the reported LGA name?
+                   -- Breaks ties between corrections when no state is reported.
+                   -- Proximity, not containment: grid readings differ by km.
+                   (c.method <> 'reported' AND s.lga_reported IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM ref.admin_areas l
+                       WHERE l.level = 2
+                         AND ref.lga_name_similarity(s.lga_reported, l.name) >= %(lga_min_similarity)s
+                         AND ST_DWithin(l.geom_utm, ST_Transform(c.geom, 32632), %(lga_tie_break_m)s)
+                   )) AS near_reported_lga,
                    (st.pcode IS NOT NULL) AS on_land,
                    (st.pcode IS NULL
                     AND ST_Y(c.geom) <= %(offshore_max_lat)s
@@ -55,69 +70,96 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                     AND ST_DWithin(ST_Transform(c.geom, 32632), nga.geom_utm,
                                    %(offshore_max_m)s)) AS in_waters
             FROM cands c
+            JOIN clean.spills s USING (spill_id)
             CROSS JOIN nga
             LEFT JOIN ref.admin_areas st
                    ON st.level = 1 AND ST_Intersects(st.geom, c.geom);
-        """),
-
-        ("choose_location", """
-            WITH ranked AS (
-                SELECT sc.*, s.state_code AS reported_state,
+        """,
+        ),
+        (
+            "choose_location",
+            """
+            -- A correction must be corroborated by the report itself: it has to
+            -- land in the reported state or near the reported LGA (or the report
+            -- names neither). Otherwise we'd confidently place a Rivers spill in
+            -- Oyo. Projection zone only breaks ties between corroborated options.
+            -- Every flag is coalesced to a real boolean: in ORDER BY ... DESC
+            -- Postgres sorts NULLs *first*, so a NULL comparison would outrank TRUE.
+            WITH flags AS (
+                SELECT sc.*,
+                       coalesce(sc.on_land OR sc.in_waters, false) AS plausible,
+                       coalesce(sc.landed_state = s.state_code, false) AS in_reported_state,
+                       (s.state_code IS NULL AND s.lga_reported IS NULL) AS nothing_reported,
+                       s.state_code AS reported_state
+                FROM scored sc JOIN clean.spills s USING (spill_id)
+            ),
+            ranked AS (
+                SELECT f.*,
+                       -- A reported state outranks the LGA name: 'Kaiama' exists in both
+                       -- Kwara and Bayelsa, so a name alone can't overrule the state.
+                       CASE WHEN f.reported_state IS NOT NULL THEN f.in_reported_state
+                            ELSE f.near_reported_lga OR f.nothing_reported END AS corroborated,
                        row_number() OVER (
-                           PARTITION BY sc.spill_id
+                           PARTITION BY f.spill_id
                            ORDER BY
                              -- A plausible reported point is never overridden.
-                             (sc.method = 'reported' AND (sc.on_land OR sc.in_waters)) DESC,
-                             sc.in_own_zone DESC,
-                             (sc.landed_state IS NOT DISTINCT FROM s.state_code
-                              AND s.state_code IS NOT NULL) DESC,
-                             sc.on_land DESC,
-                             sc.in_waters DESC,
-                             sc.priority
-                       ) AS rn,
-                       count(*) FILTER (WHERE sc.on_land OR sc.in_waters)
-                           OVER (PARTITION BY sc.spill_id) AS n_plausible
-                FROM scored sc JOIN clean.spills s USING (spill_id)
+                             (f.method = 'reported' AND f.plausible) DESC,
+                             f.in_reported_state DESC,
+                             f.near_reported_lga DESC,
+                             f.in_own_zone DESC,
+                             f.on_land DESC,
+                             f.in_waters DESC,
+                             f.priority
+                       ) AS rn
+                FROM flags f
             )
             UPDATE clean.spills s
             SET geom = r.geom, geom_method = r.method
             FROM ranked r
-            WHERE r.spill_id = s.spill_id AND r.rn = 1 AND (r.on_land OR r.in_waters);
-        """),
-
-        ("issue_unplaceable", """
+            WHERE r.spill_id = s.spill_id AND r.rn = 1 AND r.plausible
+              AND (r.method = 'reported' OR r.corroborated);
+        """,
+        ),
+        (
+            "issue_unplaceable",
+            """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT spill_id,
                    CASE WHEN tried_fix THEN 'COORD_UNRESOLVED' ELSE 'COORD_OUTSIDE_NIGERIA' END,
                    'error', 'latitude/longitude',
                    CASE WHEN tried_fix
-                        THEN format('None of %%s reprojection/decimal corrections lands in Nigeria', n)
+                        THEN format('None of %%s reprojection/decimal corrections lands in Nigeria '
+                                    'in a place consistent with the reported state/LGA', n)
                         ELSE format('Point at %%s, %%s is outside Nigeria and its waters',
                                     round(ST_Y(p)::numeric, 4), round(ST_X(p)::numeric, 4)) END,
                    jsonb_build_object('candidates_tried', n)
             FROM (
                 SELECT s.spill_id,
-                       bool_or(c.method IN ('reprojected', 'decimal_shift')) AS tried_fix,
+                       bool_or(c.method IN ('reprojected', 'decimal_shift', 'dms')) AS tried_fix,
                        (array_agg(c.geom ORDER BY c.priority))[1] AS p,
                        count(*) AS n
                 FROM clean.spills s JOIN cands c USING (spill_id)
                 WHERE s.geom IS NULL
                 GROUP BY s.spill_id
             ) x;
-        """),
-
-        ("issue_corrections", """
+        """,
+        ),
+        (
+            "issue_corrections",
+            """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id,
                    CASE s.geom_method WHEN 'reprojected' THEN 'COORD_REPROJECTED'
                                       WHEN 'decimal_shift' THEN 'COORD_DECIMAL_SHIFTED'
+                                      WHEN 'dms' THEN 'COORD_DMS_PARSED'
                                       ELSE 'COORD_SWAPPED' END,
-                   CASE s.geom_method WHEN 'reprojected' THEN 'info' ELSE 'warning' END,
+                   CASE WHEN s.geom_method IN ('reprojected', 'dms') THEN 'info' ELSE 'warning' END,
                    'latitude/longitude',
                    format('Reported %%s, %%s; corrected to %%s, %%s (%%s)',
                           r.payload->>'latitude', r.payload->>'longitude',
                           round(ST_Y(s.geom)::numeric, 6), round(ST_X(s.geom)::numeric, 6),
                           CASE s.geom_method WHEN 'reprojected' THEN 'EPSG:' || c.srid
+                               WHEN 'dms' THEN 'packed degrees-minutes-seconds'
                                ELSE replace(s.geom_method, '_', ' ') END),
                    jsonb_build_object('srid', c.srid,
                                       'reported_lat', r.payload->>'latitude',
@@ -126,10 +168,12 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             JOIN raw.spill_reports r ON r.run_id = s.raw_run_id AND r.source_id = s.spill_id
             JOIN cands c ON c.spill_id = s.spill_id AND c.method = s.geom_method
                         AND ST_Equals(c.geom, s.geom)
-            WHERE s.geom_method IN ('reprojected', 'decimal_shift', 'swapped');
-        """),
-
-        ("assign_lga", """
+            WHERE s.geom_method IN ('reprojected', 'decimal_shift', 'swapped', 'dms');
+        """,
+        ),
+        (
+            "assign_lga",
+            """
             -- Containing LGA; else the nearest within 5 km, which absorbs
             -- coastline imprecision without claiming far-offshore points.
             UPDATE clean.spills s
@@ -139,9 +183,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                 ORDER BY a.geom_utm <-> s.geom_utm
                 LIMIT 1)
             WHERE s.geom IS NOT NULL;
-        """),
-
-        ("issue_state_mismatch", """
+        """,
+        ),
+        (
+            "issue_state_mismatch",
+            """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_STATE_MISMATCH', 'warning', 'statesaffected',
                    format('Reported in %%s but the point is in %%s (%%s LGA)',
@@ -156,32 +202,33 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             JOIN ref.admin_areas reported ON reported.level = 1 AND reported.state_code = s.state_code
             WHERE landed.state_code IS DISTINCT FROM s.state_code
               AND NOT ST_DWithin(reported.geom_utm, s.geom_utm, %(state_tolerance_m)s);
-        """),
-
-        ("issue_lga_mismatch", """
+        """,
+        ),
+        (
+            "issue_lga_mismatch",
+            """
             -- Flag only if the reported name matches neither the LGA the point
-            -- is in nor any similarly-named LGA within 2 km (border tolerance).
+            -- is in nor any matching LGA within 2 km (border tolerance).
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_LGA_MISMATCH', 'warning', 'lga',
                    format('Reported LGA %%L; point is in %%s', s.lga_reported, lga.name),
                    jsonb_build_object('reported', s.lga_reported, 'located', lga.name,
                                       'similarity',
-                                      round(similarity(norm.name, lower(lga.name))::numeric, 2))
+                                      round(ref.lga_name_similarity(s.lga_reported, lga.name)::numeric, 2))
             FROM clean.spills s
             JOIN ref.admin_areas lga ON lga.pcode = s.lga_pcode
-            CROSS JOIN LATERAL (
-                SELECT lower(regexp_replace(s.lga_reported, '[-/_]+', ' ', 'g')) AS name
-            ) norm
             WHERE s.lga_reported IS NOT NULL
-              AND similarity(norm.name, lower(lga.name)) < %(lga_min_similarity)s
+              AND ref.lga_name_similarity(s.lga_reported, lga.name) < %(lga_min_similarity)s
               AND NOT EXISTS (
                   SELECT 1 FROM ref.admin_areas near
                   WHERE near.level = 2
-                    AND similarity(norm.name, lower(near.name)) >= %(lga_min_similarity)s
-                    AND ST_DWithin(near.geom_utm, s.geom_utm, 2000));
-        """),
-
-        ("issue_habitat_mismatch", """
+                    AND ST_DWithin(near.geom_utm, s.geom_utm, 2000)
+                    AND ref.lga_name_similarity(s.lga_reported, near.name) >= %(lga_min_similarity)s);
+        """,
+        ),
+        (
+            "issue_habitat_mismatch",
+            """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'HABITAT_MISMATCH', 'warning', 'spillareahabitat',
                    CASE WHEN s.habitat_codes = '{of}'
@@ -194,9 +241,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                               WHERE ST_DWithin(e.geom_utm, s.geom_utm, 2000))
               AND (   (s.habitat_codes = '{of}' AND ST_Intersects(nga.geom, s.geom))
                    OR (s.habitat_codes = '{la}' AND NOT ST_Intersects(nga.geom, s.geom)));
-        """),
-
-        ("issue_reused_coordinates", """
+        """,
+        ),
+        (
+            "issue_reused_coordinates",
+            """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_REUSED', 'warning', 'latitude/longitude',
                    format('Same coordinate used by %%s separate reports', g.n),
@@ -206,9 +255,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                   WHERE geom IS NOT NULL GROUP BY geom
                   HAVING count(*) >= %(reused_min)s) g
               ON ST_Equals(g.geom, s.geom);
-        """),
-
-        ("issue_duplicates", """
+        """,
+        ),
+        (
+            "issue_duplicates",
+            """
             -- Flag the later report of each pair; point back to the earlier one.
             WITH eligible AS (
                 SELECT * FROM clean.spills s
@@ -232,12 +283,15 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
              AND a.spill_id::bigint < b.spill_id::bigint
              AND abs(b.incident_date - a.incident_date) <= %(dup_window_days)s
              AND ST_DWithin(a.geom_utm, b.geom_utm, %(dup_radius_m)s);
-        """),
-
-        ("set_analysable", """
+        """,
+        ),
+        (
+            "set_analysable",
+            """
             UPDATE clean.spills s
             SET analysable = s.geom IS NOT NULL AND NOT EXISTS (
                 SELECT 1 FROM clean.spill_issues i
                 WHERE i.spill_id = s.spill_id AND i.severity = 'error');
-        """),
+        """,
+        ),
     ]

@@ -50,3 +50,35 @@ def validate() -> None:
     from sheen.validation import engine
 
     typer.echo(engine.validate())
+
+
+@ingest_app.command("layers")
+def ingest_layers() -> None:
+    """Promote GDAL-staged mangrove and settlement layers into ref.*."""
+    from sheen.ingest import layers
+
+    layers.promote()
+
+
+@app.command()
+def analyse() -> None:
+    """Compute per-spill exposure and refresh regional/operator summaries."""
+    from sheen.analysis import exposure
+
+    typer.echo(exposure.analyse())
+
+
+@app.command()
+def run(
+    from_file: Annotated[
+        Path | None, typer.Option(help="Load a saved snapshot instead of fetching live.")
+    ] = None,
+) -> None:
+    """Ingest, validate and analyse in one go (the scheduled job)."""
+    from sheen.analysis import exposure
+    from sheen.ingest import nosdra
+    from sheen.validation import engine
+
+    nosdra.ingest(from_file)
+    engine.validate()
+    typer.echo(exposure.analyse())

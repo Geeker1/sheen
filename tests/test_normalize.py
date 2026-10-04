@@ -15,9 +15,17 @@ STATES = {"RI": "Rivers", "BY": "Bayelsa", "KD": "Kaduna", "CR": "Cross River", 
 WINDOW = (date(2005, 1, 1), date(2024, 12, 31))
 
 BASE = {
-    "id": "1", "status": "confirmed", "company": "SPDC", "incidentdate": "2019-03-04",
-    "contaminant": "cr", "estimatedquantity": "12.5", "cause": "eqf", "spillareahabitat": "la",
-    "statesaffected": "RI", "latitude": "4.75", "longitude": "7.00",
+    "id": "1",
+    "status": "confirmed",
+    "company": "SPDC",
+    "incidentdate": "2019-03-04",
+    "contaminant": "cr",
+    "estimatedquantity": "12.5",
+    "cause": "eqf",
+    "spillareahabitat": "la",
+    "statesaffected": "RI",
+    "latitude": "4.75",
+    "longitude": "7.00",
 }
 
 
@@ -110,7 +118,7 @@ def test_contaminant_parsing(raw: str, expected: str) -> None:
         ("RI,undefined", "RI", None),
         ("RI,BY", "RI", "STATE_MULTIPLE"),
         ("RI,RI", "RI", None),
-        ("GUSAU", None, "STATE_UNRECOGNISED"),   # a city, not a state
+        ("GUSAU", None, "STATE_UNRECOGNISED"),  # a city, not a state
         ("N/A", None, None),
     ],
 )
@@ -142,6 +150,23 @@ class TestCoordinateCandidates:
         n = run(latitude="3.8991667", longitude="6.7916944")
         methods = [c.method for c in n.coord_candidates]
         assert methods == ["reported", "swapped"]
+
+    @pytest.mark.parametrize(
+        ("lat", "lon", "expected"),
+        [
+            ("04505482", "006281269", (4.848561, 6.470192)),  # DDMMSSss, two implied decimals
+            ("050122.6", "0063326.8", (5.022944, 6.557444)),  # DDMMSS.s
+        ],
+    )
+    def test_packed_degrees_minutes_seconds(self, lat: str, lon: str, expected: tuple[float, float]) -> None:
+        (c,) = run(latitude=lat, longitude=lon).coord_candidates
+        assert c.method == "dms"
+        assert (round(c.y, 6), round(c.x, 6)) == expected
+
+    def test_dms_requires_valid_minutes_and_seconds(self) -> None:
+        # 75 minutes isn't DMS; falls through to the projected-grid branch.
+        methods = {c.method for c in run(latitude="04755482", longitude="006281269").coord_candidates}
+        assert "dms" not in methods
 
     def test_far_away_degrees_are_kept_for_reporting(self) -> None:
         n = run(latitude="20.3783", longitude="16.8817")

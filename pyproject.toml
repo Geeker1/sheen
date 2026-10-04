@@ -54,7 +54,13 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+plugins = ["strawberry.ext.mypy_plugin"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["db: needs a PostGIS container"]
+
+[[tool.mypy.overrides]]
+# @strawberry.field(...) with arguments is an untyped decorator.
+module = "sheen.api.schema"
+disallow_untyped_decorators = false

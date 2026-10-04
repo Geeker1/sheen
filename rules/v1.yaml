@@ -24,9 +24,13 @@ coordinates:
   reused_min_incidents: 5
 
 lga_match:
-  # pg_trgm similarity below which the reported LGA name is considered a
-  # different place from the LGA the point falls in.
-  min_similarity: 0.3
+  # ref.lga_name_similarity (trigram similarity of the core name, 0 when compass
+  # words conflict) below which a reported LGA name is a different place.
+  # 0.4 keeps typos (Deyema/Degema 0.40) and rejects neighbours (Asari/Akuku Toru 0.38).
+  min_similarity: 0.4
+  # When choosing between coordinate corrections, prefer one within this
+  # distance of an LGA matching the reported LGA name.
+  tie_break_km: 10
 
 state_match:
   # A point this close to the reported state counts as being in it (GPS and

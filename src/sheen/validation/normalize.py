@@ -26,8 +26,8 @@ STATE_ALIASES = {"FCT": "FC"}
 
 @dataclass(frozen=True)
 class CoordCandidate:
-    method: str  # reported | swapped | reprojected | decimal_shift
-    x: float     # longitude, or easting when srid is projected
+    method: str  # reported | swapped | reprojected | decimal_shift | dms
+    x: float  # longitude, or easting when srid is projected
     y: float
     srid: int = 4326
 
@@ -84,23 +84,34 @@ def parse_dates(raw: dict[str, Any], rules: Ruleset) -> tuple[date | None, date 
     try:
         incident = _parse_date(raw.get("incidentdate"))
     except ValueError:
-        out.append(iss.make("DATE_UNPARSEABLE", f"Couldn't parse {raw.get('incidentdate')!r}",
-                            "incidentdate"))
+        out.append(
+            iss.make("DATE_UNPARSEABLE", f"Couldn't parse {raw.get('incidentdate')!r}", "incidentdate")
+        )
         incident = None
     else:
         if incident is None:
             out.append(iss.make("DATE_MISSING", "No incident date", "incidentdate"))
         elif incident < rules.dates.earliest_plausible:
-            out.append(iss.make("DATE_IMPLAUSIBLE", f"Incident dated {incident}", "incidentdate",
-                                value=str(incident)))
+            out.append(
+                iss.make(
+                    "DATE_IMPLAUSIBLE", f"Incident dated {incident}", "incidentdate", value=str(incident)
+                )
+            )
 
     try:
         jiv = _parse_date(raw.get("jivdate"))
     except ValueError:
         jiv = None
     if incident and jiv and jiv < incident:
-        out.append(iss.make("JIV_BEFORE_INCIDENT", f"JIV on {jiv}, incident on {incident}",
-                            "jivdate", jiv_date=str(jiv), incident_date=str(incident)))
+        out.append(
+            iss.make(
+                "JIV_BEFORE_INCIDENT",
+                f"JIV on {jiv}, incident on {incident}",
+                "jivdate",
+                jiv_date=str(jiv),
+                incident_date=str(incident),
+            )
+        )
     return incident, jiv, out
 
 
@@ -111,18 +122,20 @@ def parse_quantity(raw: dict[str, Any], rules: Ruleset) -> tuple[Decimal | None,
     try:
         q = Decimal(s.replace(",", ""))
     except InvalidOperation:
-        return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity",
-                               value=s)]
+        return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity", value=s)]
     if not q.is_finite():
-        return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity",
-                               value=s)]
+        return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity", value=s)]
     if q < 0:
-        return None, [iss.make("QUANTITY_NEGATIVE", f"Quantity {q} bbl", "estimatedquantity",
-                               value=str(q))]
+        return None, [iss.make("QUANTITY_NEGATIVE", f"Quantity {q} bbl", "estimatedquantity", value=str(q))]
     if q > rules.quantity.max_plausible_bbl:
-        return q, [iss.make("QUANTITY_IMPLAUSIBLE",
-                            f"{q} bbl exceeds {rules.quantity.max_plausible_bbl:g} bbl",
-                            "estimatedquantity", value=str(q))]
+        return q, [
+            iss.make(
+                "QUANTITY_IMPLAUSIBLE",
+                f"{q} bbl exceeds {rules.quantity.max_plausible_bbl:g} bbl",
+                "estimatedquantity",
+                value=str(q),
+            )
+        ]
     return q, []
 
 
@@ -138,8 +151,11 @@ def parse_cause(raw: dict[str, Any]) -> tuple[str | None, str | None, list[Issue
             return detail.lower(), None, []
         return "other", detail or None, []
     if code not in KNOWN_CAUSES:
-        return code, detail or None, [iss.make("CAUSE_UNKNOWN_CODE", f"Unknown cause {s!r}", "cause",
-                                               value=s)]
+        return (
+            code,
+            detail or None,
+            [iss.make("CAUSE_UNKNOWN_CODE", f"Unknown cause {s!r}", "cause", value=s)],
+        )
     return code, detail or None, []
 
 
@@ -175,7 +191,8 @@ def parse_state(raw: dict[str, Any], states: dict[str, str]) -> tuple[str | None
         t = STATE_ALIASES.get(t, t)
         squashed = re.sub(r"[^A-Z]", "", t)
         code = (
-            t if t in states
+            t
+            if t in states
             else by_name.get(squashed)
             or next((c for n, c in by_name.items() if squashed.startswith(n)), None)
         )
@@ -185,13 +202,40 @@ def parse_state(raw: dict[str, Any], states: dict[str, str]) -> tuple[str | None
     out: list[Issue] = []
     if not found:
         if s.upper() not in {"N/A", "UNDEFINED"}:
-            out.append(iss.make("STATE_UNRECOGNISED", f"Couldn't match state {s!r}", "statesaffected",
-                                value=s))
+            out.append(
+                iss.make("STATE_UNRECOGNISED", f"Couldn't match state {s!r}", "statesaffected", value=s)
+            )
         return None, out
     if len(found) > 1:
-        out.append(iss.make("STATE_MULTIPLE", f"Lists {', '.join(found)}; using {found[0]}",
-                            "statesaffected", states=found))
+        out.append(
+            iss.make(
+                "STATE_MULTIPLE",
+                f"Lists {', '.join(found)}; using {found[0]}",
+                "statesaffected",
+                states=found,
+            )
+        )
     return found[0], out
+
+
+def _packed_dms(s: str, degree_digits: int) -> float | None:
+    """Parse degrees-minutes-seconds written without separators.
+
+    '050122.6' -> 5°01'22.6"; '04505482' -> 4°50'54.82" (two implied decimals).
+    Only zero-padded values qualify, which is what distinguishes them from
+    plain degrees or grid metres.
+    """
+    if not re.fullmatch(r"0\d{5,}(\.\d+)?", s):
+        return None
+    whole, _, frac = s.partition(".")
+    if len(whole) < degree_digits + 4:
+        return None
+    deg, mins = int(whole[:degree_digits]), int(whole[degree_digits : degree_digits + 2])
+    sec_digits = whole[degree_digits + 2 :]
+    secs = float(f"{sec_digits[:2]}.{sec_digits[2:]}{frac}")
+    if mins >= 60 or secs >= 60:
+        return None
+    return deg + mins / 60 + secs / 3600
 
 
 def coordinate_candidates(raw: dict[str, Any], rules: Ruleset) -> tuple[list[CoordCandidate], list[Issue]]:
@@ -208,6 +252,11 @@ def coordinate_candidates(raw: dict[str, Any], rules: Ruleset) -> tuple[list[Coo
 
     def in_box(y: float, x: float) -> bool:
         return LAT_RANGE[0] <= y <= LAT_RANGE[1] and LON_RANGE[0] <= x <= LON_RANGE[1]
+
+    dms = _packed_dms(lat_s, 2), _packed_dms(lon_s, 3)
+    if dms[0] is not None and dms[1] is not None:
+        # e.g. '04505482', '006281269' -> 4°50'54.82"N, 6°28'12.69"E
+        return [CoordCandidate("dms", dms[1], dms[0])], []
 
     if abs(lat) > 1000 and abs(lon) > 1000:
         # Metres on a projected grid. Try each candidate CRS, both axis orders.
@@ -264,9 +313,7 @@ def normalize(
     # Records with an unknown or implausible date stay in (with their error) so
     # data-quality stats are complete; only well-dated out-of-window ones drop.
     in_window = (
-        incident is None
-        or incident < rules.dates.earliest_plausible
-        or window[0] <= incident <= window[1]
+        incident is None or incident < rules.dates.earliest_plausible or window[0] <= incident <= window[1]
     )
 
     return NormalizedSpill(

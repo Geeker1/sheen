@@ -44,5 +44,14 @@ services:
       db: { condition: service_healthy }
       s3: { condition: service_started }
 
+  # GDAL tooling for one-off reference layer loads (see scripts/).
+  gdal:
+    image: ghcr.io/osgeo/gdal:ubuntu-small-3.10.0
+    profiles: ["tools"]
+    working_dir: /work
+    volumes: ["./scripts:/work/scripts:ro", "./data:/work/data"]
+    depends_on:
+      db: { condition: service_healthy }
+
 volumes:
   pgdata:

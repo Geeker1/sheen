@@ -46,14 +46,16 @@ def ingest() -> None:
         for level, fname in LEVEL_FILES.items():
             for f in json.loads((dest / fname).read_text())["features"]:
                 p = f["properties"]
-                rows.append((
-                    p[f"adm{level}_pcode"],
-                    level,
-                    p[f"adm{level}_name"],
-                    p["adm1_pcode"] if level == 2 else None,
-                    p["adm1_name"],
-                    json.dumps(f["geometry"]),
-                ))
+                rows.append(
+                    (
+                        p[f"adm{level}_pcode"],
+                        level,
+                        p[f"adm{level}_name"],
+                        p["adm1_pcode"] if level == 2 else None,
+                        p["adm1_name"],
+                        json.dumps(f["geometry"]),
+                    )
+                )
         run.rows_in = len(rows)
 
         with connect() as conn, conn.cursor() as cur:
