@@ -20,3 +20,4 @@ infra/**/*.tfvars
 # Web
 web/node_modules/
 web/dist/
+web/*.tsbuildinfo
