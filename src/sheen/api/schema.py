@@ -452,8 +452,9 @@ def _explain_steps(
             "reprojected": "COORD_REPROJECTED",
             "decimal_shift": "COORD_DECIMAL_SHIFTED",
             "swapped": "COORD_SWAPPED",
-        }[method]
-        outcome = by_code[code]["message"] if code in by_code else method
+            "dms": "COORD_DMS_PARSED",
+        }.get(method)
+        outcome = by_code[code]["message"] if code in by_code else f"Location method: {method}"
         steps.append(ExplainStep(step="location", outcome=outcome))
 
     if area:

@@ -1,0 +1,187 @@
+import { useEffect, useRef, useState } from "react";
+import maplibregl, { Map as MlMap } from "maplibre-gl";
+import { API, EXPLAIN_QUERY, Explanation, gql, Summary, SUMMARY_QUERY } from "./api";
+
+type Shading = "spills" | "mangrove";
+
+// OpenFreeMap: free vector tiles from OpenStreetMap data, no API key.
+const BASEMAP = "https://tiles.openfreemap.org/styles/positron";
+
+// Sequential ramps: light = low, dark = high.
+const SPILL_FILL: maplibregl.ExpressionSpecification = [
+  "interpolate", ["linear"], ["get", "spills"],
+  0, "#f3efe6", 10, "#e8c9a0", 50, "#d4914f", 200, "#a8521e", 800, "#5c2408",
+];
+const MANGROVE_FILL: maplibregl.ExpressionSpecification = [
+  "interpolate", ["linear"],
+  ["case", [">", ["get", "mangrove_ha_2007"], 0],
+    ["*", 100, ["/", ["-", ["get", "mangrove_ha_2020"], ["get", "mangrove_ha_2007"]], ["get", "mangrove_ha_2007"]]],
+    0],
+  -10, "#8c2d04", -3, "#e6a26b", 0, "#f3efe6", 3, "#7fbf8f", 10, "#1b6b3a",
+];
+
+export default function App() {
+  const mapEl = useRef<HTMLDivElement>(null);
+  const map = useRef<MlMap | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [shading, setShading] = useState<Shading>("spills");
+  const [selected, setSelected] = useState<Explanation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    gql<{ summary: Summary }>(SUMMARY_QUERY).then((d) => setSummary(d.summary)).catch((e) => setError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    if (!mapEl.current || map.current) return;
+    const m = new maplibregl.Map({
+      container: mapEl.current,
+      style: BASEMAP,
+      center: [6.4, 5.0],
+      zoom: 7.2,
+    });
+    map.current = m;
+    // Exposed in development for browser-driven checks.
+    if (import.meta.env.DEV) (window as unknown as { __map: MlMap }).__map = m;
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+    m.on("load", () => {
+      m.addSource("lgas", { type: "geojson", data: `${API}/geojson/lgas` });
+      m.addLayer({
+        id: "lga-fill", type: "fill", source: "lgas",
+        paint: { "fill-color": SPILL_FILL, "fill-opacity": 0.75 },
+      });
+      m.addLayer({
+        id: "lga-line", type: "line", source: "lgas",
+        paint: { "line-color": "#ffffff", "line-width": 0.6 },
+      });
+
+      m.addSource("spills", { type: "geojson", data: `${API}/geojson/spills` });
+      m.addLayer({
+        id: "spills", type: "circle", source: "spills",
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 1.6, 11, 5],
+          // Corrected or flagged locations are drawn hollow so they read as less certain.
+          "circle-color": ["case", ["==", ["get", "method"], "reported"], "#1f1f1f", "#ffffff"],
+          "circle-stroke-color": "#1f1f1f",
+          "circle-stroke-width": ["case", [">", ["get", "warnings"], 0], 1, 0.3],
+          "circle-opacity": 0.75,
+        },
+      });
+
+      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+      m.on("mousemove", "lga-fill", (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p) return;
+        popup.setLngLat(e.lngLat).setHTML(
+          `<strong>${p.name}</strong>, ${p.state}<br/>${p.spills} spills · ` +
+            `${Math.round(p.mangrove_ha_2020).toLocaleString()} ha mangrove (2020)`,
+        ).addTo(m);
+      });
+      m.on("mouseleave", "lga-fill", () => popup.remove());
+
+      m.on("click", "spills", async (e) => {
+        const id = e.features?.[0]?.properties?.id;
+        if (!id) return;
+        try {
+          const d = await gql<{ explainSpill: Explanation }>(EXPLAIN_QUERY, { id: String(id) });
+          setSelected(d.explainSpill);
+        } catch (err) {
+          setError(String(err));
+        }
+      });
+      m.on("mouseenter", "spills", () => (m.getCanvas().style.cursor = "pointer"));
+      m.on("mouseleave", "spills", () => (m.getCanvas().style.cursor = ""));
+    });
+  }, []);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !m.getLayer("lga-fill")) return;
+    m.setPaintProperty("lga-fill", "fill-color", shading === "spills" ? SPILL_FILL : MANGROVE_FILL);
+  }, [shading]);
+
+  return (
+    <div className="layout">
+      <aside className="panel">
+        <header>
+          <h1>Sheen</h1>
+          <p className="lede">
+            Oil spills reported to NOSDRA in the Niger Delta, checked for data quality and set against
+            mangrove cover.
+          </p>
+        </header>
+
+        {summary && (
+          <dl className="stats">
+            <div><dt>Reports {summary.windowStart.slice(0, 4)}–{summary.windowEnd.slice(0, 4)}</dt>
+              <dd>{summary.reportsInWindow.toLocaleString()}</dd></div>
+            <div><dt>Usable for analysis</dt>
+              <dd>{Math.round((100 * summary.analysable) / summary.reportsInWindow)}%</dd></div>
+            <div><dt>Reported volume</dt>
+              <dd>{Math.round(summary.reportedBbl / 1000).toLocaleString()}k bbl</dd></div>
+          </dl>
+        )}
+
+        <fieldset className="toggle">
+          <legend>Shade LGAs by</legend>
+          <label><input type="radio" checked={shading === "spills"} onChange={() => setShading("spills")} />
+            Spill count</label>
+          <label><input type="radio" checked={shading === "mangrove"} onChange={() => setShading("mangrove")} />
+            Mangrove change 2007–2020</label>
+        </fieldset>
+
+        <p className="legend">
+          <span className="dot solid" /> reported location <span className="dot hollow" /> corrected location
+        </p>
+
+        {error && <p className="error">{error}</p>}
+
+        {selected ? (
+          <section className="detail">
+            <h2>Report {selected.spill.id}</h2>
+            <p className="meta">
+              {selected.spill.operator ?? "Unknown operator"} · {selected.spill.incidentDate ?? "no date"}
+              {selected.spill.causeLabel && <> · {selected.spill.causeLabel}</>}
+              {selected.spill.quantityBbl != null && <> · {selected.spill.quantityBbl} bbl</>}
+            </p>
+            {selected.spill.siteName && <p className="site">{selected.spill.siteName}</p>}
+
+            <h3>How this record was treated</h3>
+            <ol className="steps">
+              {selected.steps.map((s, i) => (
+                <li key={i}><span className="step">{s.step}</span>{s.outcome}</li>
+              ))}
+            </ol>
+
+            {selected.spill.issues.length > 0 && (
+              <>
+                <h3>Issues</h3>
+                <ul className="issues">
+                  {selected.spill.issues.map((i, n) => (
+                    <li key={`${i.code}-${n}`} className={i.severity}>
+                      <code>{i.code}</code> {i.message}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            <details>
+              <summary>Raw record as published</summary>
+              <pre>{JSON.stringify(selected.rawRecord, null, 2)}</pre>
+            </details>
+          </section>
+        ) : (
+          <p className="hint">Click a spill to see how its record was checked and placed.</p>
+        )}
+
+        <footer>
+          Data: NOSDRA Oil Spill Monitor; OCHA COD-AB; Global Mangrove Watch v3; OpenStreetMap.
+          Exposure is proximity, not measured damage.
+        </footer>
+      </aside>
+      <div ref={mapEl} className="map" />
+    </div>
+  );
+}

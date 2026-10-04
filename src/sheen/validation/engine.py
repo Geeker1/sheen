@@ -163,6 +163,10 @@ def _write_spills(
         SELECT spill_id, method, priority, srid,
                ST_Transform(geom, 4326)::geometry(Point, 4326) AS geom
         FROM cands_src;
-        CREATE INDEX ON cands (spill_id);""")
+        CREATE INDEX ON cands (spill_id);
+        ANALYZE cands;""")
+    # Fresh statistics after a TRUNCATE + bulk load, so the spatial steps get good plans.
+    cur.execute("ANALYZE clean.spills")
+    cur.execute("ANALYZE clean.spill_issues")
     issue_counts = Counter(i.code for n in spills for i in n.issues)
     log.info("validate.record_checks", spills=len(spills), issues=dict(issue_counts))

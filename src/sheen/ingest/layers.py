@@ -74,6 +74,9 @@ def promote() -> None:
             log.warning("layers.missing", table="osm_places")
 
         conn.execute("ANALYZE ref.mangroves; ANALYZE ref.settlements")
+        # Per-LGA mangrove area only changes with the layers, so refresh it here
+        # rather than on every analyse run.
+        conn.execute("REFRESH MATERIALIZED VIEW ref.lga_mangroves")
         run.rows_out = sum(counts.values())
         run.details["rows"] = counts
 
