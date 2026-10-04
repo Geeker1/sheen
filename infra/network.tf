@@ -16,10 +16,8 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 }
 
-# Public subnets hold the load balancer and the Fargate tasks. Tasks get a
-# public IP for outbound access (ECR, NOSDRA) instead of a NAT gateway, which
-# would cost more than the rest of this stack combined. Inbound traffic is
-# still limited to the load balancer by security groups.
+# Load balancer and Fargate tasks. Tasks use public IPs for outbound traffic
+# instead of a NAT gateway (cost); inbound is limited to the load balancer.
 resource "aws_subnet" "public" {
   count                   = length(local.azs)
   vpc_id                  = aws_vpc.main.id

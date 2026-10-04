@@ -40,7 +40,7 @@ def _download(dest: Path) -> None:
 
 def ingest() -> None:
     dest = get_settings().data_dir / "raw" / "nga_admin"
-    with pipeline_run("ingest", source=SOURCE_URL) as run:
+    with pipeline_run("reference", source=SOURCE_URL) as run:
         _download(dest)
         rows = []
         for level, fname in LEVEL_FILES.items():

@@ -26,8 +26,7 @@ def upgrade() -> None:
     CREATE SCHEMA clean;
     CREATE SCHEMA analysis;
 
-    -- One row per pipeline stage execution. Every downstream row carries a
-    -- run_id, so "which run produced this number?" is always answerable.
+    -- One row per stage run; downstream rows carry the run_id.
     CREATE TABLE ops.pipeline_runs (
         run_id          uuid PRIMARY KEY,
         stage           text NOT NULL,          -- ingest | validate | analyse
@@ -99,8 +98,8 @@ def upgrade() -> None:
     );
     CREATE INDEX ON ref.settlements USING gist (geom_utm);
 
-    -- Validated spills. Holds the latest validate run (replaced atomically);
-    -- earlier versions remain reconstructable from raw + ruleset version.
+    -- Latest validation only, replaced in one transaction. Older results can
+    -- be rebuilt from raw plus the ruleset version.
     CREATE TABLE clean.spills (
         spill_id        text PRIMARY KEY,       -- NOSDRA record id
         run_id          uuid NOT NULL REFERENCES ops.pipeline_runs(run_id),

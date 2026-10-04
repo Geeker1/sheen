@@ -132,7 +132,7 @@ def validated(geography: None, tmp_path_factory: pytest.TempPathFactory) -> dict
         _record("8", latitude="5.0", longitude="7.3", contaminant="no", lga="Okrika"),
         # Outside the analysis window: dropped from clean entirely.
         _record("9", latitude="5.0", longitude="7.3", incidentdate="2025-03-01"),
-        # Packed DMS: 5°00'00"N 7°15'00"E.
+        # Packed DMS: 5 deg 00' 00" N, 7 deg 15' 00" E.
         _record("10", latitude="0500000", longitude="0071500", lga="Okrika"),
         # Nowhere near Nigeria.
         _record("11", latitude="20.0", longitude="16.0"),

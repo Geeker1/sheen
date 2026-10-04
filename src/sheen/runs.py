@@ -1,8 +1,7 @@
 """Pipeline run bookkeeping.
 
-Every stage runs inside `pipeline_run(...)`. The run row is written in its own
-transaction before work starts, so a crashed run still leaves a 'failed' (or
-stuck 'running') record to investigate rather than nothing at all.
+The run row is committed before the work starts, so a crashed run still
+leaves a record behind.
 """
 
 import time

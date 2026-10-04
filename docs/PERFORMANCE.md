@@ -1,53 +1,59 @@
-# Performance notes
+# Performance
 
-Timings on a laptop (8 cores, PostGIS 16 in Docker), full 2005–2024 data.
+Timings on a laptop (8 cores, PostGIS 16 in Docker) with the full 2005-2024
+data:
 
 | Stage | Time |
 |---|---:|
-| Ingest 21k records (`COPY`) | 1.4 s |
-| Validate (record checks + 12 spatial steps) | ~14 s |
-| Analyse | ~65 s |
+| Ingest 21k records | about 1.5 s (plus the download) |
+| Validate | about 17 s |
+| Analyse | about 17 s |
 
-Every stage logs per-step timings (`validate.step`, `analyse.step`) and
-stores them in `ops.pipeline_runs.details.step_seconds`, so regressions
-show up in the data.
+Each stage logs per-step timings and stores them in
+`ops.pipeline_runs.details.step_seconds`.
 
-## Mangrove exposure: 430 s → 61 s
+## Mangrove exposure: 430 s to 16 s
 
-The first version computed mangrove area within 1 km and 5 km of each
-spill and took 430 s.
+The first version measured mangrove area within 1 km and 5 km of each spill
+and took 430 s. On a 500-point sample, a 1 km radius touched 20 mangrove
+polygons per point and 5 km touched 264; the 5 km part took 33 ms per point
+against 3 ms, over 90% of the time.
 
-1. **Measured instead of guessing.** On a 500-point sample, a 1 km radius
-   touched 20 mangrove polygons per point on average and a 5 km radius 264.
-   The 5 km query took 33 ms/point vs 3 ms/point: over 90% of the cost.
-2. **Dropped the 5 km radius.** Per-LGA mangrove totals already cover
-   wider context.
-3. **Buffer once per point, not once per joined row.** `ST_Buffer` inside
-   the aggregate was evaluated for every (spill, polygon) pair; it now
-   lives in a `LATERAL` subquery.
-4. **Skip intersections when a polygon is wholly inside the disc**
-   (`ST_CoveredBy` → plain `ST_Area`).
-5. **Compute per distinct point.** Many reports share coordinates
-   (13.3k spills → 12.1k distinct point/year pairs).
+What changed:
 
-Polygons are subdivided to ≤256 vertices on load (`ST_Subdivide`), so
-GiST index lookups return small, tight geometries.
+1. Dropped the 5 km radius. The per-LGA mangrove totals cover the wider
+   picture.
+2. Built each buffer once per point in a `LATERAL` subquery. Inside the
+   aggregate, `ST_Buffer` ran once per spill and polygon pair.
+3. Skipped `ST_Intersection` for polygons wholly inside the disc
+   (`ST_CoveredBy`, then plain `ST_Area`).
+4. Computed per distinct point, since many reports share coordinates.
 
-## LGA summary: 71 s → 0.4 s
+That brought it to 61 s. The rest came from planner statistics. Validation
+ran `ANALYZE` straight after the bulk load, before the spatial steps set
+`analysable`, so Postgres believed almost no rows were analysable and chose a
+nested-loop plan. Analysing again after the last update brought the step to
+16 s. Before that fix was in place, the same stale statistics briefly made
+the step take over 6 minutes.
 
-Per-LGA mangrove area was recomputed on every run, although it only changes
-when reference layers change. It moved into its own materialised view
+Mangrove polygons are cut into pieces of at most 256 vertices when loaded
+(`ST_Subdivide`), which keeps GiST lookups selective.
+
+## LGA summary: 71 s to 0.1 s
+
+Mangrove area per LGA was recomputed on every run, though it only changes
+when the layers do. It now has its own materialised view
 (`ref.lga_mangroves`), refreshed by `sheen ingest layers`.
 
-## Layer promotion: known slow spot
+## Loading layers
 
-Promoting the polygonised mangroves originally ran `ST_MakeValid` on every
-polygon (~9 min). It now only repairs polygons that fail `ST_IsValid`. This
-is a one-off load, not part of the scheduled pipeline.
+Promoting the polygonised mangroves used to run `ST_MakeValid` on every
+polygon and took about 9 minutes. It now only repairs polygons that fail
+`ST_IsValid`. This is a one-off load, not part of the weekly run.
 
-## Next steps, if needed
+## If it needed to go further
 
-- Pre-aggregate mangrove pixels to a 100 m grid of hectares per cell. Then
-  exposure is a point-in-radius sum over an indexed point table.
-- Run the exposure query per state in parallel workers.
-- Serve map points as vector tiles (`ST_AsMVT`) instead of 3 MB GeoJSON.
+- Aggregate mangrove pixels into a 100 m grid of hectares per cell, so
+  exposure becomes a sum over nearby points.
+- Run exposure per state in parallel.
+- Serve map points as vector tiles (`ST_AsMVT`) instead of 3 MB of GeoJSON.

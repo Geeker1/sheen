@@ -1,7 +1,6 @@
-"""Compute what lies around each analysable spill, then refresh the summaries.
+"""What lies around each analysable spill, plus the LGA and operator summaries.
 
-Exposure is proximity, not damage: "x ha of mangrove within 1 km" says what
-was at risk, not what was harmed. See docs/DECISIONS.md.
+Exposure is proximity, not measured damage.
 """
 
 import time
@@ -9,7 +8,7 @@ import time
 import structlog
 
 from sheen.db import connect
-from sheen.runs import pipeline_run
+from sheen.runs import latest_successful, pipeline_run
 
 log = structlog.get_logger()
 
@@ -18,11 +17,9 @@ STEPS: list[tuple[str, str]] = [
     (
         "mangroves",
         """
-        -- Mangrove area within 1 km, from the GMW extent closest in time to the
-        -- incident (2007 or 2020). Computed once per distinct point/year since
-        -- many reports share coordinates. Polygons wholly inside the disc skip
-        -- the expensive ST_Intersection. A 5 km radius was dropped: it touched
-        -- 13x more polygons and cost >90%% of runtime (see docs/PERFORMANCE.md).
+        -- Mangrove area within 1 km, using the GMW year closest to the incident.
+        -- Computed once per distinct point; polygons wholly inside the disc
+        -- skip ST_Intersection.
         WITH pts AS (
             SELECT DISTINCT geom_utm,
                    CASE WHEN incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END AS year
@@ -67,19 +64,15 @@ STEPS: list[tuple[str, str]] = [
 
 
 def analyse() -> str:
-    with connect() as conn:
-        row = conn.execute(
-            """SELECT run_id FROM ops.pipeline_runs WHERE stage = 'validate' AND status = 'succeeded'
-               ORDER BY finished_at DESC LIMIT 1"""
-        ).fetchone()
-    if row is None:
-        raise RuntimeError("No successful validation run; run `sheen validate` first")
+    validate_run_id = latest_successful("validate")
+    if validate_run_id is None:
+        raise RuntimeError("No successful validation; run `sheen validate` first")
 
-    with pipeline_run("analyse", parent_run_id=row["run_id"]) as run, connect() as conn:
+    with pipeline_run("analyse", parent_run_id=validate_run_id) as run, connect() as conn:
         timings: dict[str, float] = {}
         for name, sql in STEPS:
             t0 = time.monotonic()
-            cur = conn.execute(sql, {"run_id": run.run_id} if "%(" in sql else None)
+            cur = conn.execute(sql, {"run_id": run.run_id})
             timings[name] = round(time.monotonic() - t0, 2)
             log.info("analyse.step", step=name, rows=cur.rowcount, duration_s=timings[name])
             if name == "mangroves":

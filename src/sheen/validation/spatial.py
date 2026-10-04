@@ -1,20 +1,13 @@
-"""Spatial checks, run in PostGIS after the per-record pass.
+"""Spatial checks, run in order inside the validation transaction.
 
-Each step is a named SQL statement so the engine can log its duration and row
-count. Steps run in order inside the validation transaction and read from the
-`cands` temp table (one row per coordinate interpretation per spill).
-
-Metric work uses EPSG:32632 (UTM 32N). The Delta straddles zones 31/32; at
-4-5E the scale error of zone 32 is ~0.1%, which is far below the precision
-of the source coordinates.
+Each step is one named SQL statement so its duration and row count can be
+logged. `cands` holds one row per coordinate reading per spill. Distances
+use EPSG:32632 (UTM 32N); its error at 4-5E (~0.1%) is far below the
+precision of the source coordinates.
 """
 
-from typing import Any
-
-# Each projected CRS is only valid inside its own longitude band. Nigeria's
-# Minna belts share a near-continuous grid, so one easting/northing lands in
-# roughly the same place in every belt -- but 4-9 km apart, enough to change
-# the LGA. Only the belt whose band contains the result is the right one.
+# Longitude band each projected CRS is meant for. The three Minna belts give
+# nearby but different positions (4-9 km apart) for the same grid values.
 ZONE_SQL = """
     CASE c.srid
         WHEN 26391 THEN ST_X(c.geom) <  6.5
@@ -25,38 +18,38 @@ ZONE_SQL = """
         ELSE true
     END"""
 
-# Order in which candidate methods are trusted, all else being equal.
+# Tie-break order between reading methods.
 METHOD_PRIORITY = {"reported": 0, "swapped": 1, "dms": 2, "reprojected": 3, "decimal_shift": 4}
 
-
-def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
-    return [
-        (
-            "nigeria_outline",
-            """
+STEPS: list[tuple[str, str]] = [
+    (
+        "nigeria_outline",
+        """
             CREATE TEMP TABLE nga ON COMMIT DROP AS
             SELECT ST_Union(geom) AS geom, ST_Union(geom_utm) AS geom_utm
-            FROM ref.admin_areas WHERE level = 1;
-
-            -- The national border split into small pieces, so distance-to-
-            -- border checks can use an index instead of one huge geometry.
-            CREATE TEMP TABLE nga_edge ON COMMIT DROP AS
-            SELECT ST_Subdivide(ST_Boundary(geom_utm), 64) AS geom_utm FROM nga;
-            CREATE INDEX ON nga_edge USING gist (geom_utm);
+            FROM ref.admin_areas WHERE level = 1
         """,
-        ),
-        (
-            "score_candidates",
-            """
+    ),
+    (
+        # Border cut into small pieces so distance checks can use an index.
+        "nigeria_edge",
+        """
+            CREATE TEMP TABLE nga_edge ON COMMIT DROP AS
+            SELECT ST_Subdivide(ST_Boundary(geom_utm), 64) AS geom_utm FROM nga
+        """,
+    ),
+    ("nigeria_edge_index", "CREATE INDEX ON nga_edge USING gist (geom_utm)"),
+    (
+        "score_candidates",
+        """
             CREATE TEMP TABLE scored ON COMMIT DROP AS
             SELECT c.*,
                    """
-            + ZONE_SQL
-            + """ AS in_own_zone,
+        + ZONE_SQL
+        + """ AS in_own_zone,
                    st.state_code AS landed_state,
-                   -- Is the candidate near an LGA matching the reported LGA name?
-                   -- Breaks ties between corrections when no state is reported.
-                   -- Proximity, not containment: grid readings differ by km.
+                   -- Near an LGA whose name matches the reported one (km tolerance,
+                   -- since grid readings differ by km).
                    (c.method <> 'reported' AND s.lga_reported IS NOT NULL AND EXISTS (
                        SELECT 1 FROM ref.admin_areas l
                        WHERE l.level = 2
@@ -75,16 +68,13 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             LEFT JOIN ref.admin_areas st
                    ON st.level = 1 AND ST_Intersects(st.geom, c.geom);
         """,
-        ),
-        (
-            "choose_location",
-            """
-            -- A correction must be corroborated by the report itself: it has to
-            -- land in the reported state or near the reported LGA (or the report
-            -- names neither). Otherwise we'd confidently place a Rivers spill in
-            -- Oyo. Projection zone only breaks ties between corroborated options.
-            -- Every flag is coalesced to a real boolean: in ORDER BY ... DESC
-            -- Postgres sorts NULLs *first*, so a NULL comparison would outrank TRUE.
+    ),
+    (
+        "choose_location",
+        """
+            -- A corrected reading is only accepted if the report backs it up:
+            -- it lands in the reported state, or near the reported LGA when no
+            -- state is given. Flags are coalesced because DESC sorts NULLs first.
             WITH flags AS (
                 SELECT sc.*,
                        coalesce(sc.on_land OR sc.in_waters, false) AS plausible,
@@ -95,14 +85,13 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             ),
             ranked AS (
                 SELECT f.*,
-                       -- A reported state outranks the LGA name: 'Kaiama' exists in both
-                       -- Kwara and Bayelsa, so a name alone can't overrule the state.
+                       -- A reported state outranks the LGA name (names repeat across states).
                        CASE WHEN f.reported_state IS NOT NULL THEN f.in_reported_state
                             ELSE f.near_reported_lga OR f.nothing_reported END AS corroborated,
                        row_number() OVER (
                            PARTITION BY f.spill_id
                            ORDER BY
-                             -- A plausible reported point is never overridden.
+                             -- A plausible reported point always wins.
                              (f.method = 'reported' AND f.plausible) DESC,
                              f.in_reported_state DESC,
                              f.near_reported_lga DESC,
@@ -119,10 +108,10 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             WHERE r.spill_id = s.spill_id AND r.rn = 1 AND r.plausible
               AND (r.method = 'reported' OR r.corroborated);
         """,
-        ),
-        (
-            "issue_unplaceable",
-            """
+    ),
+    (
+        "issue_unplaceable",
+        """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT spill_id,
                    CASE WHEN tried_fix THEN 'COORD_UNRESOLVED' ELSE 'COORD_OUTSIDE_NIGERIA' END,
@@ -143,10 +132,10 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                 GROUP BY s.spill_id
             ) x;
         """,
-        ),
-        (
-            "issue_corrections",
-            """
+    ),
+    (
+        "issue_corrections",
+        """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id,
                    CASE s.geom_method WHEN 'reprojected' THEN 'COORD_REPROJECTED'
@@ -170,12 +159,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                         AND ST_Equals(c.geom, s.geom)
             WHERE s.geom_method IN ('reprojected', 'decimal_shift', 'swapped', 'dms');
         """,
-        ),
-        (
-            "assign_lga",
-            """
-            -- Containing LGA; else the nearest within 5 km, which absorbs
-            -- coastline imprecision without claiming far-offshore points.
+    ),
+    (
+        "assign_lga",
+        """
+            -- Containing LGA, else the nearest within 5 km (coastline imprecision).
             UPDATE clean.spills s
             SET lga_pcode = (
                 SELECT a.pcode FROM ref.admin_areas a
@@ -184,10 +172,10 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                 LIMIT 1)
             WHERE s.geom IS NOT NULL;
         """,
-        ),
-        (
-            "issue_state_mismatch",
-            """
+    ),
+    (
+        "issue_state_mismatch",
+        """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_STATE_MISMATCH', 'warning', 'statesaffected',
                    format('Reported in %%s but the point is in %%s (%%s LGA)',
@@ -203,12 +191,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
             WHERE landed.state_code IS DISTINCT FROM s.state_code
               AND NOT ST_DWithin(reported.geom_utm, s.geom_utm, %(state_tolerance_m)s);
         """,
-        ),
-        (
-            "issue_lga_mismatch",
-            """
-            -- Flag only if the reported name matches neither the LGA the point
-            -- is in nor any matching LGA within 2 km (border tolerance).
+    ),
+    (
+        "issue_lga_mismatch",
+        """
+            -- Flag unless the name matches the LGA the point is in, or one within 2 km.
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_LGA_MISMATCH', 'warning', 'lga',
                    format('Reported LGA %%L; point is in %%s', s.lga_reported, lga.name),
@@ -225,10 +212,10 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                     AND ST_DWithin(near.geom_utm, s.geom_utm, 2000)
                     AND ref.lga_name_similarity(s.lga_reported, near.name) >= %(lga_min_similarity)s);
         """,
-        ),
-        (
-            "issue_habitat_mismatch",
-            """
+    ),
+    (
+        "issue_habitat_mismatch",
+        """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'HABITAT_MISMATCH', 'warning', 'spillareahabitat',
                    CASE WHEN s.habitat_codes = '{of}'
@@ -242,10 +229,10 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
               AND (   (s.habitat_codes = '{of}' AND ST_Intersects(nga.geom, s.geom))
                    OR (s.habitat_codes = '{la}' AND NOT ST_Intersects(nga.geom, s.geom)));
         """,
-        ),
-        (
-            "issue_reused_coordinates",
-            """
+    ),
+    (
+        "issue_reused_coordinates",
+        """
             INSERT INTO clean.spill_issues (spill_id, code, severity, field, message, details)
             SELECT s.spill_id, 'COORD_REUSED', 'warning', 'latitude/longitude',
                    format('Same coordinate used by %%s separate reports', g.n),
@@ -256,11 +243,11 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
                   HAVING count(*) >= %(reused_min)s) g
               ON ST_Equals(g.geom, s.geom);
         """,
-        ),
-        (
-            "issue_duplicates",
-            """
-            -- Flag the later report of each pair; point back to the earlier one.
+    ),
+    (
+        "issue_duplicates",
+        """
+            -- Flag the later report of each pair, pointing back to the earlier one.
             WITH eligible AS (
                 SELECT * FROM clean.spills s
                 WHERE s.geom IS NOT NULL AND s.incident_date IS NOT NULL
@@ -284,14 +271,14 @@ def steps(params: dict[str, Any]) -> list[tuple[str, str]]:
              AND abs(b.incident_date - a.incident_date) <= %(dup_window_days)s
              AND ST_DWithin(a.geom_utm, b.geom_utm, %(dup_radius_m)s);
         """,
-        ),
-        (
-            "set_analysable",
-            """
+    ),
+    (
+        "set_analysable",
+        """
             UPDATE clean.spills s
             SET analysable = s.geom IS NOT NULL AND NOT EXISTS (
                 SELECT 1 FROM clean.spill_issues i
                 WHERE i.spill_id = s.spill_id AND i.severity = 'error');
         """,
-        ),
-    ]
+    ),
+]

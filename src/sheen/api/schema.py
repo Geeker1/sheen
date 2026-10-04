@@ -11,6 +11,7 @@ from strawberry.types import Info
 
 from sheen.api import db
 from sheen.api.loaders import Loaders
+from sheen.config import get_settings
 from sheen.validation.issues import CATALOGUE
 
 MAX_PAGE = 200
@@ -91,7 +92,7 @@ class Spill:
     latitude: float | None
     longitude: float | None
     location_method: str = strawberry.field(
-        description="reported | swapped | reprojected | decimal_shift | none"
+        description="reported | swapped | reprojected | decimal_shift | dms | none"
     )
     analysable: bool
     ruleset_version: str
@@ -407,8 +408,6 @@ class Query:
 
     @strawberry.field
     async def summary(self) -> Summary:
-        from sheen.config import get_settings
-
         r = await db.fetch_one(
             """SELECT count(*) AS n, count(*) FILTER (WHERE analysable) AS a,
                       coalesce(sum(quantity_bbl) FILTER (WHERE analysable), 0) AS bbl
@@ -431,7 +430,7 @@ def _explain_steps(
     steps = [
         ExplainStep(
             step="source",
-            outcome=f"NOSDRA record {r['spill_id']}, validated with ruleset " f"{r['ruleset_version']}",
+            outcome=f"NOSDRA record {r['spill_id']}, validated with ruleset {r['ruleset_version']}",
         )
     ]
 
@@ -484,7 +483,7 @@ def _explain_steps(
         steps.append(
             ExplainStep(
                 step="exposure",
-                outcome=f"{ha:.1f} ha of mangrove within 1 km " f"(GMW {exposure['mangrove_year']})",
+                outcome=f"{ha:.1f} ha of mangrove within 1 km (GMW {exposure['mangrove_year']})",
             )
         )
     return steps

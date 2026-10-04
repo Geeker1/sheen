@@ -1,4 +1,4 @@
-"""Raw snapshot archive (S3 in AWS, MinIO locally)."""
+"""Raw snapshot archive: S3 on AWS, LocalStack locally."""
 
 import boto3
 import structlog
@@ -9,16 +9,16 @@ from sheen.config import get_settings
 log = structlog.get_logger()
 
 
-def archive(key: str, body: bytes, content_type: str = "application/json") -> str | None:
-    """Store bytes under `key`. Returns the s3:// URI, or None if storage is unavailable.
+def archive(key: str, body: bytes) -> str | None:
+    """Store a JSON snapshot. Returns its s3:// URI, or None on failure.
 
-    Archiving is best-effort: the raw payload is also kept in Postgres, so a
-    storage outage shouldn't block ingestion. It is logged loudly instead.
+    Best-effort: the payload is also in Postgres, so an S3 outage logs a
+    warning instead of failing the ingest.
     """
     s = get_settings()
     client = boto3.client("s3", endpoint_url=s.s3_endpoint_url)
     try:
-        # In AWS the bucket is owned by Terraform; only create it for local S3.
+        # On AWS, Terraform owns the bucket.
         if s.s3_endpoint_url:
             try:
                 client.head_bucket(Bucket=s.s3_bucket)
@@ -29,7 +29,7 @@ def archive(key: str, body: bytes, content_type: str = "application/json") -> st
                         "LocationConstraint": client.meta.region_name  # type: ignore[typeddict-item]
                     },
                 )
-        client.put_object(Bucket=s.s3_bucket, Key=key, Body=body, ContentType=content_type)
+        client.put_object(Bucket=s.s3_bucket, Key=key, Body=body, ContentType="application/json")
     except Exception as exc:
         log.warning("archive.failed", key=key, error=str(exc))
         return None

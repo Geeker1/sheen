@@ -1,7 +1,6 @@
 # Testing and verifying Sheen
 
-Three levels, from quickest to most thorough. Each step says what you should
-see, so you can tell whether it worked.
+Three levels, quickest first. Each step says what you should see.
 
 ## Prerequisites
 
@@ -9,7 +8,7 @@ see, so you can tell whether it worked.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
   (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Node 22 (only for the map)
-- Terraform ≥ 1.9 (only for the infrastructure check)
+- Terraform 1.9 or later (only for the infrastructure check)
 
 ```bash
 uv sync              # creates .venv with the locked dependencies
@@ -18,7 +17,7 @@ cp .env.example .env # local settings (database on :5433, LocalStack S3)
 
 ---
 
-## Level 1: automated checks (≈1 minute, no data download)
+## Level 1: automated checks (about a minute, no download)
 
 ```bash
 make check
@@ -33,7 +32,7 @@ testcontainers, so Docker must be running, but you don't need `make up`.
 | Test file | What it covers | Needs Docker |
 |---|---|---|
 | `tests/test_normalize.py` (49) | Record-level parsing: dates, quantities, causes, contaminants, state names, every coordinate format, the analysis window | No |
-| `tests/test_pipeline_db.py` (13) | Ingest → validate against real PostGIS over a small synthetic geography: reprojection, corroboration, state/LGA mismatches, duplicates, DMS, out-of-window, the LGA name matcher | Yes |
+| `tests/test_pipeline_db.py` (13) | Ingest and validate against real PostGIS over a small synthetic geography: reprojection, corroboration, state/LGA mismatches, duplicates, DMS, out-of-window, the LGA name matcher | Yes |
 | `tests/test_api.py` (9) | GraphQL queries, pagination, filters, nested fields, `explainSpill` for every location method, GeoJSON, request IDs | Yes |
 
 Useful variations:
@@ -55,13 +54,13 @@ cd web && npm ci && npm run build
 
 ---
 
-## Level 2: run the real pipeline (≈20–30 minutes, ~760 MB download)
+## Level 2: run the real pipeline (20-30 minutes, about 760 MB to download)
 
 ```bash
 make up migrate      # PostGIS on :5433, LocalStack S3 on :4566, schema
-make reference-data  # mangrove rasters (2 × 66 MB) + OSM extract (628 MB)
+make reference-data  # mangrove rasters (2 x 66 MB) and OSM extract (628 MB)
 make layers          # boundaries, mangroves, settlements (one-off, ~15 min)
-make run             # fetch NOSDRA, validate, analyse (~1.5–2.5 min)
+make run             # fetch NOSDRA, validate, analyse (about a minute)
 ```
 
 `make run` prints one JSON log line per step. The last three `run.succeeded`
@@ -91,7 +90,7 @@ docker compose exec db psql -U sheen -d sheen
 SELECT stage, status, rows_in, rows_out, round(extract(epoch FROM finished_at - started_at)) AS secs
 FROM ops.pipeline_runs ORDER BY started_at DESC LIMIT 6;
 
--- Issue counts by type (QUANTITY_MISSING ≈ 7.8k, COORD_MISSING ≈ 4.6k at the top)
+-- Issue counts by type (QUANTITY_MISSING about 7.8k and COORD_MISSING about 4.6k at the top)
 SELECT code, severity, count(*) FROM clean.spill_issues GROUP BY 1, 2 ORDER BY 3 DESC;
 
 -- How each location was obtained
@@ -180,7 +179,7 @@ On the map you should see:
 
 - LGAs shaded by spill count, darkest in Southern Ijaw (Bayelsa)
 - spill points tracing pipeline routes; hollow points are corrected locations
-- the "Mangrove change 2007–2020" toggle recolouring the LGAs
+- the "Mangrove change 2007-2020" toggle recolouring the LGAs
 - clicking a spill showing its treatment steps, issues and raw record
 
 The API logs one JSON line per request with a `request_id`. Send your own

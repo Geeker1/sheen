@@ -1,8 +1,7 @@
-"""Per-record parsing and checks. Pure functions: no database, no I/O.
+"""Per-record parsing and checks. Pure functions, no database.
 
-Coordinates get special treatment. Instead of guessing a single fix, we emit
-every plausible interpretation as a `CoordCandidate`; the spatial step in
-PostGIS then keeps the one that actually lands where the report says it is.
+For coordinates this doesn't pick a fix: it returns every plausible reading
+as a CoordCandidate, and the PostGIS steps choose between them.
 """
 
 import math
@@ -122,7 +121,7 @@ def parse_quantity(raw: dict[str, Any], rules: Ruleset) -> tuple[Decimal | None,
     try:
         q = Decimal(s.replace(",", ""))
     except InvalidOperation:
-        return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity", value=s)]
+        q = Decimal("NaN")
     if not q.is_finite():
         return None, [iss.make("QUANTITY_UNPARSEABLE", f"Couldn't parse {s!r}", "estimatedquantity", value=s)]
     if q < 0:
@@ -221,8 +220,8 @@ def parse_state(raw: dict[str, Any], states: dict[str, str]) -> tuple[str | None
 def _packed_dms(s: str, degree_digits: int) -> float | None:
     """Parse degrees-minutes-seconds written without separators.
 
-    '050122.6' -> 5°01'22.6"; '04505482' -> 4°50'54.82" (two implied decimals).
-    Only zero-padded values qualify, which is what distinguishes them from
+    '050122.6' -> 5 deg 01' 22.6"; '04505482' -> 4 deg 50' 54.82" (two implied
+    decimals). Only zero-padded values qualify, which separates them from
     plain degrees or grid metres.
     """
     if not re.fullmatch(r"0\d{5,}(\.\d+)?", s):
@@ -255,7 +254,6 @@ def coordinate_candidates(raw: dict[str, Any], rules: Ruleset) -> tuple[list[Coo
 
     dms = _packed_dms(lat_s, 2), _packed_dms(lon_s, 3)
     if dms[0] is not None and dms[1] is not None:
-        # e.g. '04505482', '006281269' -> 4°50'54.82"N, 6°28'12.69"E
         return [CoordCandidate("dms", dms[1], dms[0])], []
 
     if abs(lat) > 1000 and abs(lon) > 1000:
@@ -277,7 +275,7 @@ def coordinate_candidates(raw: dict[str, Any], rules: Ruleset) -> tuple[list[Coo
             if in_box(y, x):
                 cands.append(CoordCandidate("decimal_shift", x, y))
     if not cands:
-        # Degrees, but nowhere near Nigeria. Keep as-is so PostGIS reports where it is.
+        # Nowhere near Nigeria; keep it so the issue can say where it is.
         cands.append(CoordCandidate("reported", lon, lat))
     return cands, []
 
@@ -310,8 +308,7 @@ def normalize(
     cands, i = coordinate_candidates(raw, rules)
     found += i
 
-    # Records with an unknown or implausible date stay in (with their error) so
-    # data-quality stats are complete; only well-dated out-of-window ones drop.
+    # Bad dates stay in (with an error) so data-quality stats stay complete.
     in_window = (
         incident is None or incident < rules.dates.earliest_plausible or window[0] <= incident <= window[1]
     )

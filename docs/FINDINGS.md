@@ -1,73 +1,62 @@
 # Findings
 
-What the NOSDRA spill register shows once it has been validated. Window:
-incidents dated 2005-01-01 to 2024-12-31. All figures are reproducible with
-`make run` against the snapshot described in [DATA_SOURCES.md](DATA_SOURCES.md).
+Incidents dated 2005-01-01 to 2024-12-31, from the snapshot described in
+[DATA_SOURCES.md](DATA_SOURCES.md).
 
-> **On "sabotage".** Causes in the register are recorded after a Joint
-> Investigation Visit (JIV) led by the operator, with regulators and
-> communities attending. Communities have long disputed many sabotage
-> findings. The figures below report what the register says, not what caused
-> each spill.
+A note on causes: they come from Joint Investigation Visits, which operators
+lead with regulators and community members present. Communities have long
+disputed many sabotage findings. The numbers below are what the register
+says, not a judgement of what caused each spill.
 
-## 1. A third of the register can't be used for spatial analysis
+## A third of the register can't be mapped
 
-| | Reports | Share |
+NOSDRA published 21,171 records. 728 fall outside the window, leaving 20,443.
+Of those, 13,334 (65.2%) are usable for analysis. The rest:
+
+| Reason | Reports | Share |
 |---|---:|---:|
-| Published by NOSDRA (all dates) | 21,171 | |
-| Outside the 2005–2024 window | 728 | |
-| **In window** | **20,443** | 100% |
-| Usable for analysis | 13,334 | **65.2%** |
 | No usable location | 4,714 | 23.1% |
-| Recorded as "no spill" (contaminant = `no`) | 1,791 | 8.8% |
+| Recorded as "no spill" (contaminant `no`) | 1,791 | 8.8% |
 | Marked invalid by NOSDRA | 675 | 3.3% |
 
-The biggest single gap is location: **22.7% of reports have no coordinates
-at all.** After that comes volume: **38% have no estimated quantity**, so
-any total volume (693,000 bbl across usable reports) is a floor, not an
-estimate.
+These overlap, so they don't add up to the total. 22.7% of reports have no
+coordinates at all, and 38% have no estimated quantity, so the reported total
+of 693,000 bbl is a floor. Counting rows without checking the contaminant code
+overstates spills by about 9%.
 
-About 9% of records in a "spill" register are explicitly *not* spills. Any
-analysis that counts rows without reading the `contaminant` code overstates
-spill numbers by that much.
+## Coordinates come in several formats
 
-## 2. Coordinates arrive in at least four formats
-
-Most coordinates are decimal degrees, but some are not. Instead of throwing
-those away, the validator proposes possible interpretations and keeps one
-only if the report itself backs it up (see [DECISIONS.md](DECISIONS.md#coordinate-corrections)).
-
-| Format found | Example (as published) | Recovered |
+| Format | Published as | Recovered |
 |---|---|---:|
-| Nigerian grid metres (Minna belts / UTM) | `505315.78, 61913.044` | 33 |
-| Packed degrees-minutes-seconds | `04505482, 006281269` → 4°50′54.82″N 6°28′12.69″E | 5 |
-| Misplaced decimal point | `50.4926111, 5.9171944` → 5.049…N | 2 |
-| Unrecoverable | `495259733, 685983183` | 15 |
+| Nigerian grid metres (Minna belts, UTM) | `505315.78, 61913.044` | 33 |
+| Packed degrees-minutes-seconds | `04505482, 006281269` (4 deg 50' 54.82" N, 6 deg 28' 12.69" E) | 5 |
+| Misplaced decimal point | `50.4926111, 5.9171944` | 2 |
+| Not recoverable | `495259733, 685983183` | 15 |
 
-All 40 recovered locations land in the reported state. Of the reprojections
-that name an LGA, 27 of 32 land in that LGA and the other 5 in a neighbouring
-one. All 3 DMS records that name an LGA land in it ("ONELGA" being the common
-acronym for Ogba/Egbema/Ndoni). That is good independent evidence that the
-parsing is right.
+A correction is only kept when it lands in the state the report names (see
+[DECISIONS.md](DECISIONS.md#coordinate-corrections)). Beyond that check, 27
+of the 32 reprojected records that name an LGA land inside it and the other 5
+in a neighbouring one; all 3 DMS records that name an LGA land in it. That is
+independent evidence the parsing is right.
 
-## 3. Reports often disagree with their own coordinates
+## Reports often disagree with their own coordinates
 
-- **466 reports (2.3%)** name a state the point is not in (with 1 km
-  tolerance at state borders). Most pairs are neighbours (Rivers↔Bayelsa,
-  Abia↔Rivers, Delta↔Edo), consistent with pipelines that cross state lines.
-- **1,127 (5.5%)** name an LGA that is neither the one the point falls in
-  nor within 2 km of it.
-- **328** share an exact coordinate with at least four other incidents,
-  which usually means a facility or default location was entered rather
-  than the spill site.
-- **2,621 reports** look like duplicates: same operator, within 250 m and
-  3 days of another report. 367 of these also share the incident number.
+- 466 reports (2.3%) name a state the point isn't in, allowing 1 km at
+  borders. Most are neighbouring pairs such as Rivers and Bayelsa, which fits
+  pipelines crossing state lines.
+- 1,127 (5.5%) name an LGA that is neither the one the point is in nor within
+  2 km of it.
+- 328 share an exact coordinate with four or more other incidents, which
+  usually means a facility or default location was entered.
+- 2,621 look like duplicates (same operator, within 250 m and 3 days); 367 of
+  those also share an incident number.
 
-## 4. Reporting completeness varies a lot by operator
+## Reporting completeness varies by operator
 
-Operators with 150+ in-window reports (excluding "no spill"/invalid):
+Operators with at least 150 reports in the window, excluding "no spill" and
+invalid records:
 
-| Operator | Reports | No location | No quantity | No cause | No JIV date | Sabotage (of known cause) |
+| Operator | Reports | No location | No quantity | No cause | No JIV date | Sabotage, of known causes |
 |---|---:|---:|---:|---:|---:|---:|
 | NAOC | 7,942 | 14% | 34% | 6% | 14% | 84% |
 | SPDC | 4,747 | 30% | 39% | 18% | 18% | 83% |
@@ -78,45 +67,41 @@ Operators with 150+ in-window reports (excluding "no spill"/invalid):
 | Heritage | 256 | 0% | 7% | 0% | 0% | 41% |
 | Seplat | 227 | 5% | 23% | 3% | 3% | 38% |
 
-Read with care: MPN (Mobil) operates offshore, where community JIVs and
-pipeline sabotage largely don't apply. Its missing JIV dates and near-zero
-sabotage share come from where it operates, not from how well it reports.
-Comparisons are fair among onshore operators.
+MPN (Mobil) operates offshore, where community JIVs and pipeline sabotage
+mostly don't apply, so its JIV and sabotage columns reflect where it works,
+not how it reports. Compare onshore operators with each other.
 
-## 5. Where spills happen
+## Where and when
 
-Rivers (5,200 usable reports), Bayelsa (4,064) and Delta (2,036) account for
-85%. The busiest LGAs are Southern Ijaw (2,305), Ogba/Egbema/Ndoni (1,780)
-and Ahoada West (1,040). Kaduna (141) and the FCT appear because of the
-product pipelines that run north to the Kaduna refinery.
+Rivers (5,200 usable reports), Bayelsa (4,064) and Delta (2,036) make up 85%.
+The busiest LGAs are Southern Ijaw (2,305), Ogba/Egbema/Ndoni (1,780) and
+Ahoada West (1,040). Kaduna (141) and the FCT appear because of the product
+pipelines running north to the Kaduna refinery. On the map, spill points
+trace the pipeline network.
 
-Usable reports per year rise to a peak in 2013–2014 (≈1,500/yr), fall
-through 2020 (486), and rise again to 950 in 2023. Changes in how actively
-operators reported over these years are part of that pattern; the series
-measures reports, not spills.
+Usable reports per year peak in 2013 and 2014 at about 1,500, fall to 486 in
+2020 and climb back to 952 in 2023. This counts reports, and reporting
+practice changed over the period, so it isn't a clean measure of spills.
 
-On the map, spill points visibly trace the pipeline network.
-
-## 6. No detectable link between spill density and mangrove extent loss
+## Spill density and mangrove loss
 
 Across the 30 LGAs with more than 2,000 ha of mangrove in 2007, spills per
-100 km² of mangrove do not correlate with the change in mangrove extent
-2007–2020 (Spearman ρ = 0.05). LGAs with more spills lost 1.7% of mangrove
-extent; those with fewer lost 1.3%.
+100 km2 of mangrove don't correlate with the change in mangrove extent from
+2007 to 2020 (Spearman 0.05). LGAs with more spills lost 1.7% of their
+mangrove; those with fewer lost 1.3%.
 
-This is **not evidence that spills don't harm mangroves.** Global Mangrove
-Watch maps whether mangrove is *present*, not its condition. Oiled mangrove
-that is still standing is still "mangrove". Detecting degradation needs
-condition indices (e.g. NDVI time series), which is the natural next step.
-Bonny is the outlier, losing 10.3% of its mangrove extent; causes there
-(industrial expansion, dredging, spills) would need site-level work.
+That doesn't show spills are harmless. Global Mangrove Watch records whether
+mangrove is present, not its condition, and oiled mangrove that is still
+standing counts as mangrove. Measuring damage would need a condition index
+such as an NDVI time series. Bonny is the exception, losing 10.3% of its
+extent; working out why (industry, dredging, spills) would need site-level
+study.
 
 ## Limitations
 
-- The register is self-reported by operators and published by the
-  regulator. Under-reporting can't be measured from the register itself.
-- Settlement counts use OpenStreetMap, whose village coverage in the Delta
-  is incomplete, so "settlements within 2 km" is a lower bound.
-- LGA is the finest admin level available (the OCHA ward layer only covers
-  three north-eastern states).
-- Exposure measures proximity, not damage.
+- The register is self-reported by operators, so under-reporting can't be
+  measured from it.
+- OpenStreetMap's village coverage in the Delta is incomplete; settlement
+  counts are a lower bound.
+- LGA is the finest admin level available.
+- Exposure is proximity, not measured damage.

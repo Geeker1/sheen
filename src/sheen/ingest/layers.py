@@ -37,7 +37,7 @@ def _staged(conn: Conn, table: str) -> bool:
 
 
 def promote() -> None:
-    with pipeline_run("ingest", source="stage") as run, connect() as conn:
+    with pipeline_run("reference", source="stage") as run, connect() as conn:
         counts: dict[str, int] = {}
 
         for year in (2007, 2020):

@@ -1,115 +1,108 @@
 # Decisions
 
-Short records of choices that weren't obvious, newest concerns first within
-each section. Each says what was decided, why, and what would change it.
+Choices that weren't obvious, and why they were made.
 
 ## Data model
 
-**Raw is append-only; clean is replaced atomically.** Every snapshot is
-stored untouched in `raw.spill_reports` (and archived to S3) with its
-SHA-256. `clean.*` holds the latest validation, rebuilt in a single
-transaction, so readers never see a half-validated table. Any earlier result
-can be rebuilt from raw plus the ruleset version stored on each row.
-*Would change if:* consumers needed to query historical validations
-directly. Then clean rows would be keyed by run.
+Raw snapshots are append-only. Each one is stored as published in
+`raw.spill_reports`, archived to S3, and hashed. `clean.*` holds only the
+latest validation and is rebuilt in a single transaction, so readers never
+see a half-finished table. Any older result can be rebuilt from raw plus the
+ruleset version stored on each row. If people needed to query old validations
+directly, clean rows would have to be keyed by run instead.
 
-**Validation errors keep the record; they don't delete it.** A record with
-an `error` issue stays in `clean.spills` with `analysable = false`. Data
-quality statistics would be biased if failing records disappeared.
+Records with errors stay in `clean.spills` with `analysable = false` rather
+than being deleted, otherwise the data-quality figures would be wrong.
 
-**Out-of-window records are dropped from clean, but only when well-dated.**
-Records with missing or implausible dates (e.g. `1902`) stay in so they
-count toward data-quality figures.
+Records outside the 2005-2024 window are dropped from clean, but only if their
+date is valid. Missing or implausible dates (such as 1902) stay in so they
+count towards the quality figures.
 
-**LGA is the finest admin level.** The OCHA COD-AB ward layer only covers
+LGA is the finest admin level used, because the OCHA ward layer only covers
 Borno, Adamawa and Yobe.
 
 ## Coordinate corrections
 
-**Python proposes, PostGIS decides.** The record-level pass doesn't guess a
-single fix. It emits every plausible reading (as reported, swapped, five
-grid CRSs × two axis orders, decimal shifts, packed DMS). PostGIS scores
-each against real geography.
+The Python pass doesn't choose a fix. It produces every plausible reading:
+as published, swapped, five projected CRSs in both axis orders, decimal
+shifts and packed DMS. PostGIS then checks each one against real boundaries.
 
-**A correction must be corroborated by the report.** A corrected point is
-only accepted if it lands in the reported state or, when no state is given,
-near an LGA matching the reported LGA name. Without this rule the first
-version placed a Rivers spill in Oyo State, 500 km away, because one grid
-reading happened to land on land. Uncorroborated records get
-`COORD_UNRESOLVED` (an error) instead of a confident wrong location.
+A corrected reading is only accepted if the report supports it: it must land
+in the reported state, or near an LGA matching the reported LGA name when no
+state is given. The first version took whichever reading landed on land and
+put a Rivers spill in Oyo, 500 km away. A record that can't be corroborated is
+marked `COORD_UNRESOLVED` instead of being placed somewhere confidently wrong.
 
-Corroboration is necessary but not sufficient. Before DMS parsing existed,
-`0509146, 0063452.0` was "reprojected" into Degema. That was in the right
-state but wrong, and it is now parsed as DMS into Ahoada West, the LGA the
-report names.
+Corroboration isn't proof. Before DMS parsing existed, `0509146, 0063452.0`
+was reprojected into Degema, which is in the right state but the wrong place.
+It is now read as DMS and lands in Ahoada West, the LGA the report names.
 
-**A reported state outranks an LGA name.** "Kaiama" exists in both Kwara
-and Bayelsa, so a name match can't overrule a contradicting state.
+When a state is reported, it outranks the LGA name. Names repeat across
+states (there is a Kaiama in Kwara and one in Bayelsa).
 
-**Projection zone breaks ties; it doesn't decide.** Nigeria's three Minna
-belts share a near-continuous grid, so one easting/northing lands in roughly
-the same place in each belt, but 4–9 km apart, enough to change the LGA.
-Among corroborated readings, the one inside its own belt's longitude band
-wins. Zone was originally ranked above state match, which got the Ukwa West
-(Abia) records wrong: their operator recorded East-Belt coordinates while
-working inside the Mid-Belt band.
+The projection zone only breaks ties. Nigeria's three Minna belts are set up
+so the same grid values land close together in each belt, but 4 to 9 km
+apart, which is enough to change the LGA. The reading that falls inside its
+own belt's longitude band wins among corroborated readings. Ranking zone above
+state got the Ukwa West (Abia) records wrong: the operator had used East Belt
+coordinates for a site in the Mid Belt band.
 
-**Every ranking flag is a real boolean.** In `ORDER BY … DESC`, Postgres
-sorts NULLs first. A comparison against a missing state evaluated to NULL
-and outranked TRUE until each flag was wrapped in `coalesce(…, false)`.
+The ranking flags are wrapped in `coalesce(..., false)`. Postgres sorts NULLs
+first in a descending sort, and a comparison against a missing state was NULL,
+which put the wrong candidate on top.
 
-**Offshore is bounded by longitude too.** "Within 250 km of Nigeria, south
-of 6.5°N" also matched Cameroon's land. Offshore candidates must lie between
-2.7°E and 8.6°E (Nigeria's coastline).
+Offshore readings must also lie between 2.7E and 8.6E, Nigeria's coastline.
+Without that, "within 250 km of Nigeria and south of 6.5N" matched land in
+Cameroon.
 
-## Name matching
+## LGA name matching
 
-**LGA names use a purpose-built similarity, not raw trigrams.** Plain
-`pg_trgm` scored "Ukwa West" vs "Saki West" at 0.33 (shared word) and
-"Ahoada West" vs "Ahoada East" at 0.50, higher than the real typo
-"Deyema" vs "Degema" (0.40). `ref.lga_name_similarity` compares names with
-compass words and "LGA" removed, and returns 0 when compass words conflict.
-Threshold 0.4. *Known gap:* acronyms such as "ONELGA" (Ogba/Egbema/Ndoni)
-need an alias table.
+Plain trigram similarity scored "Ukwa West" against "Saki West" at 0.33 and
+"Ahoada West" against "Ahoada East" at 0.50, both higher than the real typo
+"Deyema" against "Degema" (0.40). `ref.lga_name_similarity` compares names
+with compass words and "LGA" removed, and returns 0 when both names have
+compass words that differ. The threshold is 0.4. Acronyms such as ONELGA
+(Ogba/Egbema/Ndoni) still don't match; that needs an alias table.
 
-## Thresholds (rules/v1.yaml)
+## Thresholds
 
-| Setting | Value | Why |
+All in [rules/v1.yaml](../rules/v1.yaml). Changing one means a new ruleset
+version.
+
+| Setting | Value | Reason |
 |---|---|---|
-| Duplicate radius / window | 250 m / 3 days | Same pipeline segment and the same incident; 367 of the flagged pairs share an incident number, which supports the choice |
-| Max plausible quantity | 50,000 bbl | Bonga (2011), the largest spill of the era, was ~40,000 bbl |
-| State border tolerance | 1 km | GPS and boundary precision; cut state mismatches from 662 to 466 |
-| LGA border tolerance | 2 km | Same reasoning; LGA boundaries are less precise than state ones |
-| Reused coordinate | ≥ 5 incidents | Below that, repeats are plausibly the same leak point |
+| Duplicate radius and window | 250 m, 3 days | Same pipeline segment, same incident. 367 flagged pairs also share an incident number. |
+| Largest plausible quantity | 50,000 bbl | Bonga (2011), the biggest spill of the period, was about 40,000 bbl |
+| State border tolerance | 1 km | GPS and boundary precision. Cut state mismatches from 662 to 466. |
+| LGA border tolerance | 2 km | LGA boundaries are less precise than state ones |
+| Reused coordinate | 5 or more incidents | Fewer repeats can be the same leak point |
 
-**"NIL" quantities are unparseable, not zero.** "NIL" could mean nothing
-spilled or nothing measured. Treating it as 0 would bias totals downward.
+A quantity of "NIL" is treated as unparseable, not zero, because it could
+mean nothing spilled or nothing measured.
 
 ## Analysis
 
-**Exposure is proximity, not damage.** "Mangrove within 1 km" says what was
-at risk.
+Exposure is proximity, not damage. Mangrove area within 1 km says what was at
+risk.
 
-**The 5 km radius was dropped.** It touched 13× more polygons than 1 km and
-took over 90% of the stage's runtime. Wider context is already in the
-per-LGA mangrove figures. See [PERFORMANCE.md](PERFORMANCE.md).
+A 5 km radius was dropped: it touched 13 times as many polygons as 1 km and
+took over 90% of the runtime, and the per-LGA figures already give the wider
+picture. See [PERFORMANCE.md](PERFORMANCE.md).
 
-**Mangrove year follows the incident.** Incidents before 2014 use the 2007
-GMW extent, later ones 2020.
+Incidents before 2014 use the 2007 mangrove extent; later ones use 2020.
 
 ## Infrastructure
 
-**Fargate tasks in public subnets, no NAT gateway.** A NAT gateway would cost
-more than the rest of the stack. Tasks get a public IP for outbound calls
-(ECR, NOSDRA), and security groups only allow inbound traffic from the load
-balancer. The database is in private subnets. *Would change if:* the API
-handled sensitive data, or a VPC endpoint/NAT budget existed.
+The Fargate tasks run in public subnets with public IPs and no NAT gateway,
+because a NAT gateway would cost more than everything else combined. Security
+groups only allow inbound traffic from the load balancer, and the database is
+in private subnets. With sensitive data or a bigger budget, the tasks would
+move to private subnets behind NAT or VPC endpoints.
 
-**Reference layers are loaded by a GDAL container, not the app.** Rasters
-and the OSM extract are one-off loads; keeping GDAL out of the application
-image keeps it small. A Python step then validates the staged data and
-records where each layer came from in `ref.sources`.
+Reference layers are loaded with the GDAL container, not the app, which keeps
+GDAL out of the application image. A Python step then promotes the staged
+data and records its source in `ref.sources`.
 
-**Dependencies are resolved as of the end of the data window.**
-`exclude-newer` (uv) and `--before` (npm) pin the lockfiles to packages
-published before 2025, so the environment matches the snapshot.
+Dependency lockfiles are resolved as of the end of the data window
+(`exclude-newer` for uv, `--before` for npm), so the environment matches the
+snapshot.

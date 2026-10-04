@@ -11,22 +11,21 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SHEEN_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql://sheen:sheen@localhost:5433/sheen"
-    # On AWS the password is injected from Secrets Manager on its own, so the
-    # URL is assembled from parts when SHEEN_DB_HOST is set.
+    # On AWS the password comes from Secrets Manager on its own, so the URL is
+    # built from these parts when SHEEN_DB_HOST is set.
     db_host: str | None = None
     db_port: int = 5432
     db_name: str = "sheen"
     db_user: str = "sheen"
     db_password: str | None = None
 
-    # Raw snapshots are archived here before anything else touches them.
+    # Where raw snapshots are archived.
     s3_bucket: str = "sheen-raw"
     s3_endpoint_url: str | None = None  # LocalStack in development; unset on AWS
 
     nosdra_url: str = "https://oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json"
 
-    # Analysis window. Raw snapshots keep everything; validation drops well-dated
-    # records outside the window so published numbers cover whole years.
+    # Analysis window. Raw keeps everything; validation drops records dated outside it.
     window_start: date = date(2005, 1, 1)
     window_end: date = date(2024, 12, 31)
 
