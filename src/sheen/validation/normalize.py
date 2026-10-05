@@ -90,7 +90,7 @@ def parse_dates(raw: dict[str, Any], rules: Ruleset) -> tuple[date | None, date 
     else:
         if incident is None:
             out.append(iss.make("DATE_MISSING", "No incident date", "incidentdate"))
-        elif incident < rules.dates.earliest_plausible:
+        elif incident < rules.dates.earliest_plausible or incident > date.today():
             out.append(
                 iss.make(
                     "DATE_IMPLAUSIBLE", f"Incident dated {incident}", "incidentdate", value=str(incident)
@@ -310,7 +310,10 @@ def normalize(
 
     # Bad dates stay in (with an error) so data-quality stats stay complete.
     in_window = (
-        incident is None or incident < rules.dates.earliest_plausible or window[0] <= incident <= window[1]
+        incident is None
+        or incident < rules.dates.earliest_plausible
+        or incident > date.today()
+        or window[0] <= incident <= window[1]
     )
 
     return NormalizedSpill(

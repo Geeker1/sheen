@@ -66,8 +66,8 @@ lines should look like this:
 
 ```
 stage=ingest    rows_in=21171 rows_out=21171
-stage=validate  rows_in=21171 rows_out=20443  out_of_window=728  analysable=13334
-stage=analyse   rows_out=13334
+stage=validate  rows_in=21171 rows_out=21145  out_of_window=26  analysable=13884
+stage=analyse   rows_out=13884
 ```
 
 > The live NOSDRA register changes over time, so counts may drift from the
@@ -88,7 +88,7 @@ docker compose exec db psql -U sheen -d sheen
 SELECT stage, status, rows_in, rows_out, round(extract(epoch FROM finished_at - started_at)) AS secs
 FROM ops.pipeline_runs ORDER BY started_at DESC LIMIT 6;
 
--- Issue counts by type (QUANTITY_MISSING about 7.8k and COORD_MISSING about 4.6k at the top)
+-- Issue counts by type (QUANTITY_MISSING about 8.0k and COORD_MISSING about 4.6k at the top)
 SELECT code, severity, count(*) FROM clean.spill_issues GROUP BY 1, 2 ORDER BY 3 DESC;
 
 -- How each location was obtained
@@ -168,6 +168,8 @@ Queries to paste into GraphiQL:
 Plain HTTP endpoints:
 
 ```bash
+curl -s "localhost:8000/trends?lga=Gokana,Khana,Tai,Eleme"   # spills per year in Ogoni
+curl -s "localhost:8000/trends?state=RI&by=month"           # Rivers, by month
 curl -i localhost:8000/healthz                       # {"status":"ok"} + an x-request-id header
 curl -s localhost:8000/geojson/lgas | head -c 300    # GeoJSON for the choropleth
 curl -s "localhost:8000/geojson/spills?state_code=BY" | head -c 300

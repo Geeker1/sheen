@@ -2,6 +2,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,9 +17,10 @@ class Settings(BaseSettings):
 
     nosdra_url: str = "https://oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json"
 
-    # Analysis window. Raw keeps everything; validation drops records dated outside it.
+    # Analysis window, 2005 to today. Raw keeps everything; validation drops
+    # records dated before the start.
     window_start: date = date(2005, 1, 1)
-    window_end: date = date(2024, 12, 31)
+    window_end: date = Field(default_factory=date.today)
 
     ruleset_path: Path = Path("rules/v1.yaml")
     data_dir: Path = Path("data")

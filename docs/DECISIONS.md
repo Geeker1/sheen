@@ -14,9 +14,9 @@ directly, clean rows would have to be keyed by run instead.
 Records with errors stay in `clean.spills` with `analysable = false` rather
 than being deleted, otherwise the data-quality figures would be wrong.
 
-Records outside the 2005-2024 window are dropped from clean, but only if their
-date is valid. Missing or implausible dates (such as 1902) stay in so they
-count towards the quality figures.
+Records dated before 2005 are dropped from clean, but only if their date is
+valid. Missing or implausible dates (such as 1902, or a date in the future)
+stay in with an error so they count towards the quality figures.
 
 LGA is the finest admin level used, because the OCHA ward layer only covers
 Borno, Adamawa and Yobe.
@@ -97,6 +97,5 @@ Reference layers are loaded with the GDAL container, not the app, which keeps
 GDAL out of the application image. A Python step then promotes the staged
 data and records its source in `ref.sources`.
 
-Dependency lockfiles are resolved as of the end of the data window
-(`exclude-newer` for uv, `--before` for npm), so the environment matches the
-snapshot.
+Dependency lockfiles are resolved as of a fixed date (`exclude-newer` for uv,
+`--before` for npm), so installs are reproducible.

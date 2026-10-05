@@ -2,7 +2,7 @@
 
 | Layer | Source | Licence | As of |
 |---|---|---|---|
-| Spill reports | NOSDRA Nigerian Oil Spill Monitor, the JSON endpoint behind its public dashboard (`oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json`) | Public, free to use per NOSDRA | Analysis uses 2005-2024 |
+| Spill reports | NOSDRA Nigerian Oil Spill Monitor, the JSON endpoint behind its public dashboard (`oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json`) | Public, free to use per NOSDRA | Analysis uses 2005 onwards |
 | State and LGA boundaries | OCHA COD-AB Nigeria (`cod-ab-nga` on HDX), v01 | CC BY-IGO | Valid from 2019-04-17 |
 | Mangrove extent | Global Mangrove Watch v3.0 (Bunting et al. 2022), Zenodo record 6894273, 2007 and 2020 rasters | CC BY 4.0 | End of 2007, end of 2020 |
 | Settlements | OpenStreetMap `place=*` nodes from the Geofabrik extract `nigeria-250101.osm.pbf` | ODbL 1.0 | 2025-01-01 |

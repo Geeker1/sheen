@@ -33,9 +33,9 @@ recorded as sabotage brings the community no compensation
 Looking at the register for Ogoni's four LGAs (Eleme, Gokana, Khana and Tai)
 shows what that means in practice:
 
-- 567 reports from 2005 to 2024 can be placed in Ogoni. 147 of them can't
-  be used: 131 are recorded as "no spill", 8 are marked invalid and 8 have
-  no date.
+- 593 reports since 2005 can be placed in Ogoni. 155 of them can't be
+  used: 138 are recorded as "no spill", 9 are marked invalid and 8 have no
+  date.
 - The first 2008 Bodo spill is in the register as 1,640 barrels, the
   operator's figure. An independent assessment for Amnesty put it at 103,000
   to 311,000 barrels
@@ -62,13 +62,13 @@ says so wherever it uses them.
 
 ## What the data shows
 
-Of the 20,443 reports dated 2005 to 2024, 65% can be used for spatial
-analysis. 23% have no usable location, and 9% are recorded as "no spill" in a
+Of the 21,145 reports dated from 2005 onwards, 66% can be used for spatial
+analysis. 22% have no usable location, and 9% are recorded as "no spill" in a
 spill register. Coordinates arrive in at least four formats (decimal degrees,
 Nigerian grid metres, packed degrees-minutes-seconds and misplaced decimal
-points); 40 records were recovered, each only when the report's own state
+points); 42 records were recovered, each only when the report's own state
 agrees with the fix. The share of reports without a location ranges from 0%
-(Heritage) to 30% (SPDC) and 65% (Chevron).
+(Heritage) to 30% (SPDC) and 64% (Chevron).
 
 More in [docs/FINDINGS.md](docs/FINDINGS.md).
 
@@ -155,6 +155,18 @@ A query to start with:
 }
 ```
 
+To see how spills in an area changed over time, open the trends endpoint in
+a browser. For Ogoni's four LGAs, by year:
+
+```
+http://localhost:8000/trends?lga=Gokana,Khana,Tai,Eleme
+```
+
+It also takes `state=RI`, `operator=SPDC` and `by=month`. Each period has the
+number of usable spills, how many had a volume recorded and the total
+reported, the split by cause, and a three-period rolling average. Periods with
+no spills are included, and the current one is marked as partial.
+
 `make check` runs the linters, mypy and the tests. The integration tests start
 their own PostGIS container. [docs/TESTING.md](docs/TESTING.md) covers manual
 checks.
@@ -170,4 +182,4 @@ checks.
 ## Data
 
 NOSDRA Oil Spill Monitor; OCHA COD-AB (CC BY-IGO); Global Mangrove Watch v3.0
-(CC BY 4.0); OpenStreetMap contributors (ODbL). Analysis window: 2005 to 2024.
+(CC BY 4.0); OpenStreetMap contributors (ODbL). Analysis window: 2005 to the latest snapshot.

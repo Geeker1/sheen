@@ -12,7 +12,7 @@ from sheen.validation.normalize import CoordCandidate, normalize
 
 RULES = rules_mod.load(Path("rules/v1.yaml"))
 STATES = {"RI": "Rivers", "BY": "Bayelsa", "KD": "Kaduna", "CR": "Cross River", "FC": "FCT"}
-WINDOW = (date(2005, 1, 1), date(2024, 12, 31))
+WINDOW = (date(2005, 1, 1), date(2026, 10, 5))
 
 BASE = {
     "id": "1",
@@ -175,10 +175,12 @@ class TestCoordinateCandidates:
 
 class TestAnalysisWindow:
     def test_inside(self) -> None:
-        assert run(incidentdate="2024-12-31").in_window
+        assert run(incidentdate="2026-10-05").in_window
 
-    def test_after_window_is_excluded(self) -> None:
-        assert not run(incidentdate="2025-01-01").in_window
+    def test_future_date_is_an_error_not_dropped(self) -> None:
+        n = run(incidentdate="2099-01-01")
+        assert n.in_window
+        assert "DATE_IMPLAUSIBLE" in {i.code for i in n.issues}
 
     def test_before_window_is_excluded(self) -> None:
         assert not run(incidentdate="2004-06-01").in_window

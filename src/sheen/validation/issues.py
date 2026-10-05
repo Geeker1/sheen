@@ -48,7 +48,9 @@ CATALOGUE: dict[str, IssueType] = {
         # Dates
         IssueType("DATE_MISSING", _E, "No incident date, so it can't be placed in time."),
         IssueType("DATE_UNPARSEABLE", _E, "Incident date isn't a valid date."),
-        IssueType("DATE_IMPLAUSIBLE", _E, "Incident date is before the earliest plausible date."),
+        IssueType(
+            "DATE_IMPLAUSIBLE", _E, "Incident date is before the earliest plausible date or in the future."
+        ),
         IssueType("JIV_BEFORE_INCIDENT", _W, "Joint investigation dated before the incident."),
         # Quantity
         IssueType("QUANTITY_MISSING", _W, "No estimated quantity."),

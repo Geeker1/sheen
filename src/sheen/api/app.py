@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from fastapi import FastAPI, Query, Request, Response
@@ -14,6 +14,7 @@ from strawberry.fastapi import GraphQLRouter
 from sheen.api import db
 from sheen.api.loaders import make_loaders
 from sheen.api.schema import schema
+from sheen.config import get_settings
 from sheen.logging import configure_logging
 
 log = structlog.get_logger()
@@ -125,3 +126,84 @@ async def lgas_geojson(state_code: str | None = None) -> Response:
         {"state": state_code},
     )
     return _geojson(rows)
+
+
+TREND_NOTE = (
+    "Counts are usable spill reports in the NOSDRA register, not every spill that happened, "
+    "and reporting practice has changed over time. Volumes are what operators reported; "
+    "compare reported_bbl with spills_with_volume before reading much into it."
+)
+
+
+@app.get("/trends")
+async def trends(
+    lga: str | None = Query(None, description="One or more LGA names or P-codes, comma separated."),
+    state: str | None = Query(None, description="Two-letter NOSDRA state code, e.g. RI."),
+    operator: str | None = None,
+    by: Literal["year", "month"] = "year",
+) -> dict[str, Any]:
+    """Spills over time for an area or operator, with zero-filled periods."""
+    s = get_settings()
+    wanted = [x.strip() for x in lga.split(",") if x.strip()] if lga else []
+    matched: list[str] = []
+    if wanted:
+        rows = await db.fetch(
+            """SELECT pcode, name FROM ref.admin_areas
+               WHERE level = 2 AND (lower(name) = ANY(%(names)s) OR pcode = ANY(%(raw)s))""",
+            {"names": [w.lower() for w in wanted], "raw": wanted},
+        )
+        matched = [r["pcode"] for r in rows]
+        found = {r["name"].lower() for r in rows} | {r["pcode"] for r in rows}
+        unmatched = [w for w in wanted if w.lower() not in found and w not in found]
+    else:
+        unmatched = []
+
+    series = await db.fetch(
+        """
+        WITH area AS (
+            SELECT s.* FROM clean.spills s
+            LEFT JOIN ref.admin_areas l ON l.pcode = s.lga_pcode
+            WHERE s.analysable
+              AND (NOT %(filter_lga)s OR s.lga_pcode = ANY(%(pcodes)s))
+              AND (%(state)s::text IS NULL OR l.state_code = %(state)s)
+              AND (%(operator)s::text IS NULL OR s.operator ILIKE %(operator)s)
+        ),
+        periods AS (
+            SELECT generate_series(date_trunc(%(by)s, %(start)s::date), date_trunc(%(by)s, %(end)s::date),
+                                   ('1 ' || %(by)s)::interval)::date AS p
+        )
+        SELECT to_char(p.p, CASE %(by)s WHEN 'year' THEN 'YYYY' ELSE 'YYYY-MM' END) AS period,
+               count(a.spill_id) AS spills,
+               count(a.quantity_bbl) AS spills_with_volume,
+               coalesce(round(sum(a.quantity_bbl), 1), 0) AS reported_bbl,
+               count(*) FILTER (WHERE a.cause_code = 'sab') AS sabotage,
+               count(*) FILTER (WHERE a.cause_code IN ('eqf', 'cor', 'ome')) AS operational,
+               round(avg(count(a.spill_id)) OVER (ORDER BY p.p ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 1)
+                   AS spills_rolling_avg_3
+        FROM periods p LEFT JOIN area a ON date_trunc(%(by)s, a.incident_date)::date = p.p
+        GROUP BY p.p ORDER BY p.p
+        """,
+        {
+            "filter_lga": bool(wanted),
+            "pcodes": matched,
+            "state": state.upper() if state else None,
+            "operator": operator,
+            "by": by,
+            "start": s.window_start,
+            "end": s.window_end,
+        },
+    )
+    points = [
+        {k: (float(v) if k in ("reported_bbl", "spills_rolling_avg_3") else v) for k, v in r.items()}
+        for r in series
+    ]
+    if points:
+        points[-1]["partial"] = True  # the current year or month isn't over
+    return {
+        "filter": {"lga": wanted or None, "state": state, "operator": operator, "by": by},
+        "unmatched_lgas": unmatched,
+        "window": {"start": s.window_start, "end": s.window_end},
+        "total_spills": sum(p["spills"] for p in points),
+        "note": TREND_NOTE,
+        "series": points,
+    }

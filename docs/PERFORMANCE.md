@@ -1,7 +1,7 @@
 # Performance
 
-Timings on a laptop (8 cores, PostGIS 16 in Docker) with the full 2005-2024
-data:
+Timings on a laptop (8 cores, PostGIS 16 in Docker) with the full register
+(about 21,000 records):
 
 | Stage | Time |
 |---|---:|

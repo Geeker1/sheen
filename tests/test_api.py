@@ -104,3 +104,19 @@ def test_operator_quality(client: TestClient) -> None:
     (op,) = gql(client, "{ operators(minReports: 1) { operator reports shareUnplaceable } }")["operators"]
     assert op["operator"] == "OPCO"
     assert 0 < op["shareUnplaceable"] < 1
+
+
+def test_trends_by_lga_year(client: TestClient) -> None:
+    body = client.get("/trends", params={"lga": "Okrika,Nowhere"}).json()
+    assert body["unmatched_lgas"] == ["Nowhere"]
+    assert body["total_spills"] == 4  # analysable spills placed in Okrika: 1, 2, 7, 10
+    by_year = {p["period"]: p["spills"] for p in body["series"]}
+    assert by_year["2018"] == 4
+    assert by_year["2010"] == 0  # years without spills are still listed
+    assert body["series"][-1]["partial"] is True
+
+
+def test_trends_by_state_and_month(client: TestClient) -> None:
+    body = client.get("/trends", params={"state": "by", "by": "month"}).json()
+    months = {p["period"]: p["spills"] for p in body["series"] if p["spills"]}
+    assert months == {"2018-04": 1}  # spill 4 is reported as Rivers but lies in Bayelsa
