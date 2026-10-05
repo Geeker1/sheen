@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl, { Map as MlMap } from "maplibre-gl";
 import { API, EXPLAIN_QUERY, Explanation, gql, Summary, SUMMARY_QUERY } from "./api";
+import TrendChart, { Area } from "./TrendChart";
 
 type Shading = "spills" | "mangrove";
 
@@ -27,6 +28,7 @@ export default function App() {
   const [shading, setShading] = useState<Shading>("spills");
   const [selected, setSelected] = useState<Explanation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [area, setArea] = useState<Area | null>(null);
 
   useEffect(() => {
     gql<{ summary: Summary }>(SUMMARY_QUERY).then((d) => setSummary(d.summary)).catch((e) => setError(String(e)));
@@ -55,6 +57,11 @@ export default function App() {
         id: "lga-line", type: "line", source: "lgas",
         paint: { "line-color": "#ffffff", "line-width": 0.6 },
       });
+      m.addLayer({
+        id: "lga-selected", type: "line", source: "lgas",
+        paint: { "line-color": "#1f1f1f", "line-width": 2 },
+        filter: ["==", ["get", "pcode"], ""],
+      });
 
       m.addSource("spills", { type: "geojson", data: `${API}/geojson/spills` });
       m.addLayer({
@@ -80,6 +87,13 @@ export default function App() {
       });
       m.on("mouseleave", "lga-fill", () => popup.remove());
 
+      // Clicking an LGA (but not a spill inside it) shows that LGA's trend.
+      m.on("click", "lga-fill", (e) => {
+        if (m.queryRenderedFeatures(e.point, { layers: ["spills"] }).length) return;
+        const p = e.features?.[0]?.properties;
+        if (p) setArea({ pcode: p.pcode, name: p.name, state: p.state });
+      });
+
       m.on("click", "spills", async (e) => {
         const id = e.features?.[0]?.properties?.id;
         if (!id) return;
@@ -94,6 +108,12 @@ export default function App() {
       m.on("mouseleave", "spills", () => (m.getCanvas().style.cursor = ""));
     });
   }, []);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !m.getLayer("lga-selected")) return;
+    m.setFilter("lga-selected", ["==", ["get", "pcode"], area?.pcode ?? ""]);
+  }, [area]);
 
   useEffect(() => {
     const m = map.current;
@@ -134,6 +154,8 @@ export default function App() {
         <p className="legend">
           <span className="dot solid" /> reported location <span className="dot hollow" /> corrected location
         </p>
+
+        <TrendChart area={area} onClear={() => setArea(null)} />
 
         {error && <p className="error">{error}</p>}
 

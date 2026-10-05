@@ -155,8 +155,9 @@ A query to start with:
 }
 ```
 
-To see how spills in an area changed over time, open the trends endpoint in
-a browser. For Ogoni's four LGAs, by year:
+To see how spills in an area changed over time, click an LGA on the map: the
+side panel shows its spills per year with a three-year average. The same
+data is available from the trends endpoint. For Ogoni's four LGAs, by year:
 
 ```
 http://localhost:8000/trends?lga=Gokana,Khana,Tai,Eleme

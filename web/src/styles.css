@@ -76,3 +76,32 @@ footer { margin-top: 28px; font-size: 11px; color: var(--muted); border-top: 1px
   .map { grid-row: 1; }
   .panel { grid-row: 2; border-right: 0; }
 }
+
+.trend { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.trend-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.trend-head h3 { margin: 0; }
+.trend-area { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 12px; }
+.trend-plot { position: relative; transition: opacity 0.15s; }
+.trend-plot svg { display: block; overflow: visible; }
+.trend-plot .grid { stroke: var(--rule); stroke-width: 1; }
+.trend-plot .tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.trend-plot rect:focus { outline: none; }
+.trend-tip {
+  position: absolute; width: 160px; pointer-events: none; background: #fff;
+  border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.tip-title { color: var(--muted); margin-bottom: 2px; }
+.tip-row { display: flex; align-items: center; gap: 6px; }
+.tip-row strong { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.key { display: inline-block; flex: none; }
+.key.bar { width: 10px; height: 10px; border-radius: 2px; background: #a8521e; }
+.key.line { width: 14px; height: 2px; border-radius: 1px; background: #2a78d6; }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-top: 6px; align-items: center; }
+.trend-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.trend-note { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+.trend-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trend-table th, .trend-table td { text-align: right; padding: 2px 6px; border-bottom: 1px solid var(--rule); }
+.trend-table th:first-child, .trend-table td:first-child { text-align: left; }

@@ -181,6 +181,8 @@ On the map you should see:
 - spill points tracing pipeline routes; hollow points are corrected locations
 - the "Mangrove change 2007-2020" toggle recolouring the LGAs
 - clicking a spill showing its treatment steps, issues and raw record
+- clicking an LGA outlining it and showing its spills per year in the panel
+  (hover a bar for the numbers; "Show all" goes back to every area)
 
 The API logs one JSON line per request with a `request_id`. Send your own
 with `-H 'x-request-id: test123'` and find it in the logs.
