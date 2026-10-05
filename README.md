@@ -107,8 +107,7 @@ Why things are done this way is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Python 3.12, FastAPI, Strawberry GraphQL, psycopg 3 (plain SQL), PostgreSQL 16
 with PostGIS 3.4, Alembic, GDAL for the reference layers, pytest with
-testcontainers, Docker, Terraform on AWS (ECS Fargate, RDS, S3, EventBridge
-Scheduler, CloudWatch), GitHub Actions, React with MapLibre.
+testcontainers, Docker, GitHub Actions, React with MapLibre.
 
 ## Running it
 
@@ -137,13 +136,6 @@ A query to start with:
 `make check` runs the linters, mypy and the tests. The integration tests start
 their own PostGIS container. [docs/TESTING.md](docs/TESTING.md) covers manual
 checks.
-
-## Deployment
-
-`infra/` has the Terraform: the API as a Fargate service behind a load
-balancer, the pipeline as a weekly scheduled Fargate task, RDS Postgres with
-PostGIS, a versioned S3 bucket for snapshots, and a CloudWatch alarm on failed
-pipeline runs.
 
 ## Docs
 

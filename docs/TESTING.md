@@ -8,7 +8,6 @@ Three levels, quickest first. Each step says what you should see.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
   (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Node 22 (only for the map)
-- Terraform 1.9 or later (only for the infrastructure check)
 
 ```bash
 uv sync              # creates .venv with the locked dependencies
@@ -48,7 +47,6 @@ Other checks CI runs:
 ```bash
 docker build -t sheen:local .                       # application image
 docker run --rm sheen:local sheen --help            # CLI works inside it
-cd infra && terraform init -backend=false && terraform validate
 cd web && npm ci && npm run build
 ```
 

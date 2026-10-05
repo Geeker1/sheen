@@ -1,4 +1,4 @@
-"""Raw snapshot archive: S3 on AWS, LocalStack locally."""
+"""Raw snapshot archive in S3 (LocalStack locally)."""
 
 import boto3
 import structlog
@@ -18,7 +18,6 @@ def archive(key: str, body: bytes) -> str | None:
     s = get_settings()
     client = boto3.client("s3", endpoint_url=s.s3_endpoint_url)
     try:
-        # On AWS, Terraform owns the bucket.
         if s.s3_endpoint_url:
             try:
                 client.head_bucket(Bucket=s.s3_bucket)

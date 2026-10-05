@@ -7,7 +7,7 @@ from sheen.config import get_settings
 
 
 def configure_logging() -> None:
-    """JSON logs in containers (CloudWatch-friendly), readable logs in a terminal.
+    """JSON logs in containers, readable logs in a terminal.
 
     Context such as run_id or request_id is bound with
     structlog.contextvars.bind_contextvars and appears on every line after.

@@ -91,13 +91,7 @@ picture. See [PERFORMANCE.md](PERFORMANCE.md).
 
 Incidents before 2014 use the 2007 mangrove extent; later ones use 2020.
 
-## Infrastructure
-
-The Fargate tasks run in public subnets with public IPs and no NAT gateway,
-because a NAT gateway would cost more than everything else combined. Security
-groups only allow inbound traffic from the load balancer, and the database is
-in private subnets. With sensitive data or a bigger budget, the tasks would
-move to private subnets behind NAT or VPC endpoints.
+## Tooling
 
 Reference layers are loaded with the GDAL container, not the app, which keeps
 GDAL out of the application image. A Python step then promotes the staged
