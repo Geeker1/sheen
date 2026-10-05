@@ -430,7 +430,7 @@ def _explain_steps(
     steps = [
         ExplainStep(
             step="source",
-            outcome=f"NOSDRA record {r['spill_id']}, validated with ruleset {r['ruleset_version']}",
+            outcome=f"NOSDRA report {r['spill_id']}, checked with rules {r['ruleset_version']}",
         )
     ]
 
