@@ -74,11 +74,33 @@ More in [docs/FINDINGS.md](docs/FINDINGS.md).
 
 ## How it works
 
-```
-NOSDRA JSON -> raw.spill_reports -> validate -> clean.spills + clean.spill_issues -> analyse -> analysis.*
-                (untouched copy,                                                      (mangroves within 1 km,
-                 archived to S3)                                                       settlements, LGA and
-                                                                                       operator summaries)
+```mermaid
+flowchart TD
+    src["NOSDRA spill register<br/>about 21,000 reports"]
+    raw[("raw<br/>exactly as published<br/>+ copy in S3")]
+    ref[("Reference layers<br/>boundaries, mangroves,<br/>settlements")]
+
+    subgraph validate ["Validate"]
+        direction TB
+        py["Python<br/>parse each field<br/>list possible locations"]
+        pg["PostGIS<br/>keep the location<br/>the report supports<br/>check state, LGA,<br/>duplicates"]
+        py --> pg
+    end
+
+    clean[("clean<br/>each spill with its<br/>location and issues")]
+    ana[("analysis<br/>mangroves and settlements<br/>nearby, summaries by<br/>LGA and operator")]
+    api["GraphQL API<br/>explainSpill"]
+    map["Map"]
+
+    src -->|ingest| raw
+    raw --> py
+    pg --> clean
+    clean -->|analyse| ana
+    ref -.-> pg
+    ref -.-> ana
+    clean --> api
+    ana --> api
+    api --> map
 ```
 
 1. Ingest stores each snapshot exactly as published, with its SHA-256, in
