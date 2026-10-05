@@ -117,7 +117,7 @@ def validated(geography: None, tmp_path_factory: pytest.TempPathFactory) -> dict
         _record("1", latitude="5.0", longitude="7.25", lga="Okrika"),
         # Grid metres whose Mid Belt reading lands in the reported state.
         _record("2", latitude=grid_rivers[0], longitude=grid_rivers[1], lga="Okrika"),
-        # Same metres, but reported in Bayelsa: no reading corroborates it.
+        # Same grid numbers, but reported in Bayelsa: no reading lands there.
         _record("3", latitude=grid_rivers[0], longitude=grid_rivers[1], statesaffected="BY"),
         # Point in Bayelsa, reported as Rivers -> state mismatch warning.
         _record("4", latitude="5.0", longitude="6.0", lga="Yenagoa"),

@@ -1,6 +1,6 @@
-"""Validate the latest raw snapshot into clean.spills and clean.spill_issues.
+"""Check the latest download and save the results.
 
-Runs as one transaction, so readers never see a half-validated table.
+Everything happens in one transaction, so nobody sees half-finished results.
 """
 
 import time
@@ -66,7 +66,7 @@ def validate() -> str:
                 cur.execute(sql, params)
                 timings[name] = round(time.monotonic() - t0, 2)
                 log.info("validate.step", step=name, rows=cur.rowcount, duration_s=timings[name])
-            # The steps changed geom and analysable; refresh stats for the analyse stage.
+            # The steps above changed many rows, so update the statistics again.
             cur.execute("ANALYZE clean.spills")
 
             counts = cur.execute(
@@ -128,7 +128,8 @@ def _write_spills(
             for i in n.issues:
                 copy.write_row((n.spill_id, i.code, i.severity.value, i.field, i.message, Jsonb(i.details)))
 
-    # Candidates come in mixed CRSs as EWKT; PostGIS reprojects them to WGS 84.
+    # The readings come in different coordinate systems; PostGIS converts them all
+    # to latitude and longitude.
     cur.execute("""
         CREATE TEMP TABLE cands_src (
             spill_id text, method text, priority smallint, srid integer, geom geometry
@@ -151,6 +152,6 @@ def _write_spills(
                ST_Transform(geom, 4326)::geometry(Point, 4326) AS geom
         FROM cands_src""")
     cur.execute("CREATE INDEX ON cands (spill_id)")
-    # Fresh planner statistics after the bulk load.
+    # Update Postgres's statistics after loading, so its queries stay fast.
     for table in ("cands", "clean.spills", "clean.spill_issues"):
         cur.execute(f"ANALYZE {table}")

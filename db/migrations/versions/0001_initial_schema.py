@@ -1,7 +1,7 @@
 """initial schema
 
-Data flows raw -> clean -> analysis. `raw` is append-only and never edited, so
-any cleaned value can be traced back to exactly what the source published.
+Data moves from raw to clean to analysis. raw is never edited, so any cleaned
+value can be traced back to what NOSDRA published.
 
 Revision ID: 0001
 Revises:
@@ -26,7 +26,7 @@ def upgrade() -> None:
     CREATE SCHEMA clean;
     CREATE SCHEMA analysis;
 
-    -- One row per stage run; downstream rows carry the run_id.
+    -- One row per pipeline run. Results record which run made them.
     CREATE TABLE ops.pipeline_runs (
         run_id          uuid PRIMARY KEY,
         stage           text NOT NULL,          -- ingest | validate | analyse
@@ -44,7 +44,7 @@ def upgrade() -> None:
         finished_at     timestamptz
     );
 
-    -- Exactly what NOSDRA published, one row per record per snapshot.
+    -- Exactly what NOSDRA published, one row per report per download.
     CREATE TABLE raw.spill_reports (
         run_id      uuid NOT NULL REFERENCES ops.pipeline_runs(run_id),
         source_id   text NOT NULL,
@@ -52,8 +52,8 @@ def upgrade() -> None:
         PRIMARY KEY (run_id, source_id)
     );
 
-    -- Code tables, per field: 'co' is condensate as a contaminant but
-    -- coastland as a habitat. Labels come from the Oil Spill Monitor legend.
+    -- What each code means, per field: 'co' is condensate when it's what
+    -- spilled, but coastland when it's where. From the Oil Spill Monitor legend.
     CREATE TABLE ref.codes (
         field   text NOT NULL,
         code    text NOT NULL,
@@ -98,8 +98,8 @@ def upgrade() -> None:
     );
     CREATE INDEX ON ref.settlements USING gist (geom_utm);
 
-    -- Latest validation only, replaced in one transaction. Older results can
-    -- be rebuilt from raw plus the ruleset version.
+    -- Only the latest check, replaced all at once. Older results can be
+    -- rebuilt from raw and the rules version.
     CREATE TABLE clean.spills (
         spill_id        text PRIMARY KEY,       -- NOSDRA record id
         run_id          uuid NOT NULL REFERENCES ops.pipeline_runs(run_id),

@@ -1,42 +1,43 @@
-# Validation ruleset. Every clean.spills row records the version that produced
-# it, so changing a threshold is a new version, never an in-place edit.
+# The limits used by the checks. Each checked report records which version of
+# this file it was checked with, so changing a limit should mean a new version.
 version: "v1"
 
 dates:
-  earliest_plausible: 1990-01-01   # older dates are treated as typos (e.g. "1902")
+  earliest_plausible: 1990-01-01   # anything older is treated as a typo, like "1902"
 
 quantity:
-  # Largest single spill in the register's era is Bonga (2011), ~40,000 bbl.
+  # The biggest spill of the period, Bonga in 2011, was about 40,000 barrels.
   max_plausible_bbl: 50000
 
 coordinates:
-  # Nigerian grid CRSs tried when a record holds metres instead of degrees.
-  # Minna / Nigeria West, Mid, East Belt; WGS 84 / UTM 31N, 32N.
+  # The Nigerian grids to try when a report gives metres instead of degrees:
+  # the three Minna zones (west, middle, east) and UTM zones 31N and 32N.
   projected_candidate_srids: [26391, 26392, 26393, 32631, 32632]
-  # Offshore spills legitimately fall outside every state polygon. Points this
-  # close to Nigeria and south of the latitude below count as Nigerian waters.
-  # Longitude bounds keep neighbouring countries' land (Benin, Cameroon) out.
+  # Spills at sea are outside every state. A point counts as offshore Nigeria
+  # if it's this close to the country, south of this latitude, and between
+  # these longitudes (which keeps out land in Benin and Cameroon).
   offshore_max_distance_km: 250
   offshore_max_latitude: 6.5
   offshore_lon_range: [2.7, 8.6]
-  # Exact same coordinate on this many distinct incidents suggests a default
-  # or facility location rather than the spill site.
+  # When this many reports share exactly the same point, it's probably a
+  # facility or default location, not where the spill happened.
   reused_min_incidents: 5
 
 lga_match:
-  # ref.lga_name_similarity (trigram similarity of the core name, 0 when compass
-  # words conflict) below which a reported LGA name is a different place.
-  # 0.4 keeps typos (Deyema/Degema 0.40) and rejects neighbours (Asari/Akuku Toru 0.38).
+  # How alike two area names must be to count as the same place (from 0 to 1).
+  # 0.4 accepts typos like Deyema for Degema (0.40) but not neighbours like
+  # Asari Toru and Akuku Toru (0.38).
   min_similarity: 0.4
-  # When choosing between coordinate corrections, prefer one within this
-  # distance of an LGA matching the reported LGA name.
+  # When deciding between possible fixes, prefer one within this distance of
+  # an area with the name the report gives.
   tie_break_km: 10
 
 state_match:
-  # A point this close to the reported state counts as being in it (GPS and
-  # boundary precision near state lines).
+  # A point this close to the state the report names counts as inside it,
+  # because GPS readings and boundaries aren't exact.
   border_tolerance_m: 1000
 
 duplicates:
+  # Same company, this close together and this close in time.
   radius_m: 250
   window_days: 3

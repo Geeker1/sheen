@@ -24,8 +24,8 @@ def upgrade() -> None:
         nearest_settlement_m numeric
     );
 
-    -- Per-LGA picture. Counts use analysable spills only; data-quality
-    -- columns use every in-window report that can be placed in the LGA.
+    -- Totals for each area. Spill counts only use usable reports; the
+    -- missing-data columns use every report that can be placed in the area.
     CREATE MATERIALIZED VIEW analysis.lga_summary AS
     WITH placed AS (
         SELECT s.*, e.mangrove_ha_1km, e.settlements_2km
@@ -62,8 +62,8 @@ def upgrade() -> None:
     GROUP BY a.pcode, a.name, st.name, st.state_code, a.geom, a.geom_utm, mg.ha_2007, mg.ha_2020;
     CREATE UNIQUE INDEX ON analysis.lga_summary (pcode);
 
-    -- How completely each operator reports. Uses every in-window report,
-    -- because missing data is exactly what this view measures.
+    -- How much each company leaves out. This uses every report, because
+    -- missing data is exactly what it measures.
     CREATE MATERIALIZED VIEW analysis.operator_quality AS
     SELECT s.operator,
            count(*)                                                        AS reports,

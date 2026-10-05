@@ -72,7 +72,7 @@ export default function App() {
       zoom: 7.2,
     });
     map.current = m;
-    // Exposed in development for browser-driven checks.
+    // Available in development, for testing in the browser.
     if (import.meta.env.DEV) (window as unknown as { __map: MlMap }).__map = m;
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 

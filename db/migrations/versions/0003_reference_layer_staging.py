@@ -1,8 +1,8 @@
-"""staging schema and source provenance for reference layers
+"""staging schema, and a record of where reference layers came from
 
-GDAL (scripts/load_reference_layers.sh) writes raw polygonised/extracted
-layers into `stage`; `sheen ingest layers` validates them into `ref` and
-records where each layer came from in ref.sources.
+The GDAL script loads mangroves and settlements into `stage`. Then
+`sheen ingest layers` checks them, moves them into `ref`, and records where
+each one came from in ref.sources.
 
 Revision ID: 0003
 Revises: 0002

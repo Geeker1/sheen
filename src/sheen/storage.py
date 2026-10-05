@@ -1,4 +1,4 @@
-"""Raw snapshot archive in S3 (LocalStack locally)."""
+"""Keep a copy of each download in S3 (LocalStack when running locally)."""
 
 import boto3
 import structlog
@@ -10,10 +10,10 @@ log = structlog.get_logger()
 
 
 def archive(key: str, body: bytes) -> str | None:
-    """Store a JSON snapshot. Returns its s3:// URI, or None on failure.
+    """Save a download to S3 and return its address, or None if that fails.
 
-    Best-effort: the payload is also in Postgres, so an S3 outage logs a
-    warning instead of failing the ingest.
+    The download is also saved in the database, so if S3 is down this only
+    logs a warning.
     """
     s = get_settings()
     client = boto3.client("s3", endpoint_url=s.s3_endpoint_url)

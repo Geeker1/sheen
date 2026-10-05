@@ -27,13 +27,13 @@ def test_reported_point_used_as_is(validated: dict[str, dict[str, Any]]) -> None
     assert (s["geom_method"], s["lga"], s["analysable"]) == ("reported", "Okrika", True)
 
 
-def test_grid_metres_reprojected_with_the_corroborated_crs(validated: dict[str, dict[str, Any]]) -> None:
+def test_grid_coordinates_use_the_grid_that_matches_the_report(validated: dict[str, dict[str, Any]]) -> None:
     s = validated["2"]
     assert (s["geom_method"], s["lga"]) == ("reprojected", "Okrika")
     assert s["issues"]["COORD_REPROJECTED"][0]["srid"] == 26392
 
 
-def test_uncorroborated_correction_is_not_applied(validated: dict[str, dict[str, Any]]) -> None:
+def test_fix_that_disagrees_with_the_report_is_not_used(validated: dict[str, dict[str, Any]]) -> None:
     s = validated["3"]
     assert s["geom_method"] == "none"
     assert not s["analysable"]

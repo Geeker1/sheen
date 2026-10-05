@@ -1,7 +1,8 @@
-"""DataLoaders: batch per-spill lookups into one query per request.
+"""Fetch related data for many spills at once.
 
-Without these, listing 50 spills with their issues would run 51 queries.
-A fresh set is created per request so nothing is cached across requests.
+Without this, listing 50 spills with their issues would take 51 database
+queries instead of 2. A new set is made for each request, so nothing is
+shared between requests.
 """
 
 from collections import defaultdict

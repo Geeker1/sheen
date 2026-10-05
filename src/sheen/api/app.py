@@ -68,8 +68,7 @@ async def healthz() -> dict[str, str]:
 
 
 def _geojson(rows: list[Any]) -> Response:
-    # Geometry is already GeoJSON text from PostGIS; splice it in rather than
-    # parsing and re-serialising thousands of coordinates.
+    # PostGIS already returns GeoJSON text, so it's added as it is.
     features = ",".join(
         '{"type":"Feature","geometry":'
         + r["geometry"]
@@ -90,7 +89,7 @@ async def spills_geojson(
     date_to: date | None = None,
     include_flagged: bool = Query(True, description="Include analysable spills that have warnings."),
 ) -> Response:
-    """Analysable spills as points, for the map. Geometry built by PostGIS."""
+    """Usable spills as points for the map."""
     rows = await db.fetch(
         """SELECT ST_AsGeoJSON(s.geom, 5) AS geometry,
                   jsonb_build_object(
@@ -113,7 +112,7 @@ async def spills_geojson(
 
 @app.get("/geojson/lgas")
 async def lgas_geojson(state_code: str | None = None) -> Response:
-    """LGA polygons (simplified) with their summary numbers, for the choropleth."""
+    """Local government areas with their totals, for shading the map."""
     rows = await db.fetch(
         """SELECT ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.002), 4) AS geometry,
                   jsonb_build_object('pcode', pcode, 'name', name, 'state', state,
@@ -129,9 +128,10 @@ async def lgas_geojson(state_code: str | None = None) -> Response:
 
 
 TREND_NOTE = (
-    "Counts are usable spill reports in the NOSDRA register, not every spill that happened, "
-    "and reporting practice has changed over time. Volumes are what operators reported; "
-    "compare reported_bbl with spills_with_volume before reading much into it."
+    "These are usable reports in the NOSDRA register, not every spill that happened, "
+    "and the way companies report has changed over time. Volumes are what the companies "
+    "reported, and many reports have none, so check spills_with_volume before comparing "
+    "reported_bbl."
 )
 
 
@@ -142,7 +142,7 @@ async def trends(
     operator: str | None = None,
     by: Literal["year", "month"] = "year",
 ) -> dict[str, Any]:
-    """Spills over time for an area or operator, with zero-filled periods."""
+    """Spills per year or month for an area, state or company, including periods with none."""
     s = get_settings()
     wanted = [x.strip() for x in lga.split(",") if x.strip()] if lga else []
     matched: list[str] = []

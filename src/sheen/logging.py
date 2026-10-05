@@ -7,10 +7,10 @@ from sheen.config import get_settings
 
 
 def configure_logging() -> None:
-    """JSON logs in containers, readable logs in a terminal.
+    """Log as JSON in containers and as readable text in a terminal.
 
-    Context such as run_id or request_id is bound with
-    structlog.contextvars.bind_contextvars and appears on every line after.
+    Values such as run_id or request_id are attached once and then appear on
+    every log line.
     """
     renderer: structlog.typing.Processor = (
         structlog.processors.JSONRenderer()

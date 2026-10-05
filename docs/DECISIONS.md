@@ -1,101 +1,106 @@
 # Decisions
 
-Choices that weren't obvious, and why they were made.
+The choices that weren't obvious, and why I made them.
 
-## Data model
+## Keeping the original data
 
-Raw snapshots are append-only. Each one is stored as published in
-`raw.spill_reports`, archived to S3, and hashed. `clean.*` holds only the
-latest validation and is rebuilt in a single transaction, so readers never
-see a half-finished table. Any older result can be rebuilt from raw plus the
-ruleset version stored on each row. If people needed to query old validations
-directly, clean rows would have to be keyed by run instead.
+Every download of the register is saved exactly as published, and never
+changed. The checked version is rebuilt from it each time, all at once, so
+nobody ever sees a half-finished result. If the checks change, the old
+results can be rebuilt from the saved download.
 
-Records with errors stay in `clean.spills` with `analysable = false` rather
-than being deleted, otherwise the data-quality figures would be wrong.
+Reports with serious problems are kept and marked as unusable, not deleted.
+Otherwise the figures on how much of the register is usable would be wrong.
 
-Records dated before 2005 are dropped from clean, but only if their date is
-valid. Missing or implausible dates (such as 1902, or a date in the future)
-stay in with an error so they count towards the quality figures.
+Reports dated before 2005 are left out. Reports with a missing or impossible
+date, like 1902 or a date in the future, are kept and marked, so they still
+count in the quality figures.
 
-LGA is the finest admin level used, because the OCHA ward layer only covers
-Borno, Adamawa and Yobe.
+Local government area is the smallest area used, because the official ward
+boundaries only cover three states in the north-east.
 
-## Coordinate corrections
+## Fixing locations
 
-The Python pass doesn't choose a fix. It produces every plausible reading:
-as published, swapped, five projected CRSs in both axis orders, decimal
-shifts and packed DMS. PostGIS then checks each one against real boundaries.
+Some reports have locations in the wrong format. The code doesn't guess
+which fix is right. It works out every way the numbers could be read (as
+written, with latitude and longitude swapped, as Nigerian grid coordinates,
+with the decimal point moved, or as degrees-minutes-seconds) and then checks
+each one on the map.
 
-A corrected reading is only accepted if the report supports it: it must land
-in the reported state, or near an LGA matching the reported LGA name when no
-state is given. The first version took whichever reading landed on land and
-put a Rivers spill in Oyo, 500 km away. A record that can't be corroborated is
-marked `COORD_UNRESOLVED` instead of being placed somewhere confidently wrong.
+A fix is only kept if it agrees with the report. It has to land in the state
+the report names, or near the local government area it names if there's no
+state. The first version just took any reading that landed on land, and put
+a Rivers spill in Oyo, 500 km away. Now a report that can't be fixed safely
+is left without a location instead of being put somewhere wrong.
 
-Corroboration isn't proof. Before DMS parsing existed, `0509146, 0063452.0`
-was reprojected into Degema, which is in the right state but the wrong place.
-It is now read as DMS and lands in Ahoada West, the LGA the report names.
+Agreeing with the report doesn't prove a fix is right. Before the code could
+read degrees-minutes-seconds, one such report was "fixed" into Degema. That
+was the right state but the wrong place. It now lands in Ahoada West, which
+is the area the report names.
 
-When a state is reported, it outranks the LGA name. Names repeat across
-states (there is a Kaiama in Kwara and one in Bayelsa).
+If a report gives a state, the state counts more than the area name, because
+the same name can appear in different states. There's a Kaiama in Kwara and
+another in Bayelsa.
 
-The projection zone only breaks ties. Nigeria's three Minna belts are set up
-so the same grid values land close together in each belt, but 4 to 9 km
-apart, which is enough to change the LGA. The reading that falls inside its
-own belt's longitude band wins among corroborated readings. Ranking zone above
-state got the Ukwa West (Abia) records wrong: the operator had used East Belt
-coordinates for a site in the Mid Belt band.
+Nigeria's grid has three zones (west, middle and east). The same numbers give
+slightly different places in each zone, 4 to 9 km apart, which is enough to
+change the local government area. Each zone is meant for one part of the
+country, so that decides between readings that both agree with the report,
+but nothing more. When the zone counted for more than the state, some Abia
+reports landed in Rivers: the company had used east-zone coordinates for a
+site in the middle zone.
 
-The ranking flags are wrapped in `coalesce(..., false)`. Postgres sorts NULLs
-first in a descending sort, and a comparison against a missing state was NULL,
-which put the wrong candidate on top.
+One bug was easy to miss. When sorting candidates from best to worst,
+Postgres puts empty values first. A check against a missing state came out
+empty instead of false, which pushed a wrong candidate to the top. Every
+check now turns an empty result into false.
 
-Offshore readings must also lie between 2.7E and 8.6E, Nigeria's coastline.
-Without that, "within 250 km of Nigeria and south of 6.5N" matched land in
-Cameroon.
+Spills at sea are allowed outside every state, but only off Nigeria's coast.
+Without a limit on longitude, points on land in Cameroon passed as offshore.
 
-## LGA name matching
+## Matching area names
 
-Plain trigram similarity scored "Ukwa West" against "Saki West" at 0.33 and
-"Ahoada West" against "Ahoada East" at 0.50, both higher than the real typo
-"Deyema" against "Degema" (0.40). `ref.lga_name_similarity` compares names
-with compass words and "LGA" removed, and returns 0 when both names have
-compass words that differ. The threshold is 0.4. Acronyms such as ONELGA
-(Ogba/Egbema/Ndoni) still don't match; that needs an alias table.
+Reports spell local government areas in many ways: "UKWA-WEST", "Ukwa West
+LGA", "Deyema" for Degema. A standard text-similarity score got this wrong. It
+rated "Ukwa West" and "Saki West" as more alike than "Deyema" and "Degema",
+because of the shared word "West". So the matcher ignores words like North,
+South, East, West and "LGA", and treats two names with different directions
+(Ukwa West and Ukwa East) as different places. Short forms like ONELGA (for
+Ogba/Egbema/Ndoni) still don't match.
 
-## Thresholds
+## Limits
 
-All in [rules/v1.yaml](../rules/v1.yaml). Changing one means a new ruleset
-version.
+All the limits are in [rules/v1.yaml](../rules/v1.yaml). Changing one should
+mean a new version of that file.
 
-| Setting | Value | Reason |
+| Limit | Value | Why |
 |---|---|---|
-| Duplicate radius and window | 250 m, 3 days | Same pipeline segment, same incident. 367 flagged pairs also share an incident number. |
-| Largest plausible quantity | 50,000 bbl | Bonga (2011), the biggest spill of the period, was about 40,000 bbl |
-| State border tolerance | 1 km | GPS and boundary precision. Cut state mismatches from 662 to 466. |
-| LGA border tolerance | 2 km | LGA boundaries are less precise than state ones |
-| Reused coordinate | 5 or more incidents | Fewer repeats can be the same leak point |
+| Duplicates | Same company, within 250 m and 3 days | Same pipeline, same incident. 367 of the pairs it finds also share an incident number. |
+| Largest believable spill | 50,000 barrels | The biggest spill of the period, Bonga in 2011, was about 40,000 barrels |
+| State borders | 1 km leeway | GPS and boundaries aren't exact. This removed about 200 false alarms. |
+| Area borders | 2 km leeway | Area boundaries are less exact than state ones |
+| Shared coordinates | 5 or more reports | Fewer than that can be the same leak point |
 
-A quantity of "NIL" is treated as unparseable, not zero, because it could
-mean nothing spilled or nothing measured.
+A quantity written as "NIL" is treated as unreadable, not as zero, because
+it could mean nothing leaked or nothing was measured.
 
-## Analysis
+## The analysis
 
-Exposure is proximity, not damage. Mangrove area within 1 km says what was at
-risk.
+The analysis measures what was near a spill, not how much damage it did.
+Mangrove within 1 km is what was at risk.
 
-A 5 km radius was dropped: it touched 13 times as many polygons as 1 km and
-took over 90% of the runtime, and the per-LGA figures already give the wider
-picture. See [PERFORMANCE.md](PERFORMANCE.md).
+It used to measure mangrove within 5 km too. That took over 90% of the
+running time and added little, because the area summaries already give the
+wider picture, so it was dropped.
 
-Incidents before 2014 use the 2007 mangrove extent; later ones use 2020.
+Spills before 2014 are compared with the 2007 mangrove map, and later ones
+with the 2020 map.
 
-## Tooling
+## Tools
 
-Reference layers are loaded with the GDAL container, not the app, which keeps
-GDAL out of the application image. A Python step then promotes the staged
-data and records its source in `ref.sources`.
+The mangrove and settlement data are loaded with a separate GDAL container,
+so the main app doesn't need GDAL installed. A Python step then cleans the
+loaded data and records where each layer came from.
 
-Dependency lockfiles are resolved as of a fixed date (`exclude-newer` for uv,
-`--before` for npm), so installs are reproducible.
+Dependencies are locked to versions from a fixed date, so installs are the
+same every time.

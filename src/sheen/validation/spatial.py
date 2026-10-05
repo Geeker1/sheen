@@ -1,13 +1,13 @@
-"""Spatial checks, run in order inside the validation transaction.
+"""The location checks, run in order during validation.
 
-Each step is one named SQL statement so its duration and row count can be
-logged. `cands` holds one row per coordinate reading per spill. Distances
-use EPSG:32632 (UTM 32N); its error at 4-5E (~0.1%) is far below the
-precision of the source coordinates.
+Each step is one SQL statement, so its time and row count can be logged. The
+`cands` table holds every possible reading of each report's coordinates.
+Distances are in metres using UTM zone 32N, which is accurate enough across
+the whole Delta.
 """
 
-# Longitude band each projected CRS is meant for. The three Minna belts give
-# nearby but different positions (4-9 km apart) for the same grid values.
+# The part of the country each grid is meant for. Nigeria's three grid zones
+# put the same numbers 4 to 9 km apart.
 ZONE_SQL = """
     CASE c.srid
         WHEN 26391 THEN ST_X(c.geom) <  6.5
@@ -18,7 +18,7 @@ ZONE_SQL = """
         ELSE true
     END"""
 
-# Tie-break order between reading methods.
+# Which reading to prefer when everything else is equal.
 METHOD_PRIORITY = {"reported": 0, "swapped": 1, "dms": 2, "reprojected": 3, "decimal_shift": 4}
 
 STEPS: list[tuple[str, str]] = [
@@ -31,7 +31,7 @@ STEPS: list[tuple[str, str]] = [
         """,
     ),
     (
-        # Border cut into small pieces so distance checks can use an index.
+        # Nigeria's border, cut into small pieces so distance checks are fast.
         "nigeria_edge",
         """
             CREATE TEMP TABLE nga_edge ON COMMIT DROP AS
@@ -48,8 +48,8 @@ STEPS: list[tuple[str, str]] = [
         + ZONE_SQL
         + """ AS in_own_zone,
                    st.state_code AS landed_state,
-                   -- Near an LGA whose name matches the reported one (km tolerance,
-                   -- since grid readings differ by km).
+                   -- Is it near an area with the name the report gives? (Within a
+                   -- few km, because the grid zones disagree by that much.)
                    (c.method <> 'reported' AND s.lga_reported IS NOT NULL AND EXISTS (
                        SELECT 1 FROM ref.admin_areas l
                        WHERE l.level = 2
@@ -72,9 +72,9 @@ STEPS: list[tuple[str, str]] = [
     (
         "choose_location",
         """
-            -- A corrected reading is only accepted if the report backs it up:
-            -- it lands in the reported state, or near the reported LGA when no
-            -- state is given. Flags are coalesced because DESC sorts NULLs first.
+            -- A fix is only kept if it agrees with the report: it lands in the
+            -- state the report names, or near the area it names if there's no
+            -- state. Empty values become false, because Postgres sorts them first.
             WITH flags AS (
                 SELECT sc.*,
                        coalesce(sc.on_land OR sc.in_waters, false) AS plausible,
@@ -85,13 +85,13 @@ STEPS: list[tuple[str, str]] = [
             ),
             ranked AS (
                 SELECT f.*,
-                       -- A reported state outranks the LGA name (names repeat across states).
+                       -- A state beats an area name, because area names repeat across states.
                        CASE WHEN f.reported_state IS NOT NULL THEN f.in_reported_state
                             ELSE f.near_reported_lga OR f.nothing_reported END AS corroborated,
                        row_number() OVER (
                            PARTITION BY f.spill_id
                            ORDER BY
-                             -- A plausible reported point always wins.
+                             -- The location as reported wins whenever it makes sense.
                              (f.method = 'reported' AND f.plausible) DESC,
                              f.in_reported_state DESC,
                              f.near_reported_lga DESC,
@@ -117,8 +117,7 @@ STEPS: list[tuple[str, str]] = [
                    CASE WHEN tried_fix THEN 'COORD_UNRESOLVED' ELSE 'COORD_OUTSIDE_NIGERIA' END,
                    'error', 'latitude/longitude',
                    CASE WHEN tried_fix
-                        THEN format('None of %%s reprojection/decimal corrections lands in Nigeria '
-                                    'in a place consistent with the reported state/LGA', n)
+                        THEN format('None of the %%s possible fixes lands where the report says', n)
                         ELSE format('Point at %%s, %%s is outside Nigeria and its waters',
                                     round(ST_Y(p)::numeric, 4), round(ST_X(p)::numeric, 4)) END,
                    jsonb_build_object('candidates_tried', n)
@@ -163,7 +162,7 @@ STEPS: list[tuple[str, str]] = [
     (
         "assign_lga",
         """
-            -- Containing LGA, else the nearest within 5 km (coastline imprecision).
+            -- The area the point is in, or the nearest within 5 km (the coastline isn't exact).
             UPDATE clean.spills s
             SET lga_pcode = (
                 SELECT a.pcode FROM ref.admin_areas a

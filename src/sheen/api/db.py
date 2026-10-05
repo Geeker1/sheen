@@ -1,4 +1,4 @@
-"""Async connection pool for the API (the pipeline uses the sync pool in sheen.db)."""
+"""Database connections for the API. The pipeline uses the ones in sheen.db."""
 
 from typing import Any
 

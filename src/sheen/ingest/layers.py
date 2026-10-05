@@ -1,8 +1,8 @@
-"""Promote GDAL-staged reference layers (stage.*) into ref.* tables.
+"""Move the mangrove and settlement data loaded by GDAL into the main tables.
 
-scripts/load_reference_layers.sh does the GDAL work; this step makes the
-geometries valid, projects them to UTM 32N, subdivides large polygons so
-spatial indexes stay selective, and records provenance in ref.sources.
+scripts/load_reference_layers.sh does the GDAL part. This step repairs any
+broken shapes, converts them to metres, cuts very large shapes into smaller
+pieces so lookups stay fast, and records where each layer came from.
 """
 
 import uuid
@@ -47,8 +47,7 @@ def promote() -> None:
                 continue
             conn.execute("DELETE FROM ref.mangroves WHERE year = %s", (year,))
             cur = conn.execute(
-                # GDAL's polygons are almost all valid already; ST_MakeValid on
-                # large pixel-edge polygons is slow, so only repair the ones that need it.
+                # Only repair shapes that are broken; repairing every shape was very slow.
                 sql.SQL("""INSERT INTO ref.mangroves (year, geom_utm)
                     SELECT %s, (ST_Dump(ST_Subdivide(
                                CASE WHEN ST_IsValid(g) THEN g
@@ -74,8 +73,8 @@ def promote() -> None:
             log.warning("layers.missing", table="osm_places")
 
         conn.execute("ANALYZE ref.mangroves; ANALYZE ref.settlements")
-        # Per-LGA mangrove area only changes with the layers, so refresh it here
-        # rather than on every analyse run.
+        # Mangrove area per local government area only changes with this data,
+        # so it's updated here rather than on every analysis run.
         conn.execute("REFRESH MATERIALIZED VIEW ref.lga_mangroves")
         run.rows_out = sum(counts.values())
         run.details["rows"] = counts

@@ -1,36 +1,41 @@
 # Data sources
 
-| Layer | Source | Licence | As of |
+| Data | Where it comes from | Licence | Date |
 |---|---|---|---|
-| Spill reports | NOSDRA Nigerian Oil Spill Monitor, the JSON endpoint behind its public dashboard (`oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json`) | Public, free to use per NOSDRA | Analysis uses 2005 onwards |
-| State and LGA boundaries | OCHA COD-AB Nigeria (`cod-ab-nga` on HDX), v01 | CC BY-IGO | Valid from 2019-04-17 |
-| Mangrove extent | Global Mangrove Watch v3.0 (Bunting et al. 2022), Zenodo record 6894273, 2007 and 2020 rasters | CC BY 4.0 | End of 2007, end of 2020 |
-| Settlements | OpenStreetMap `place=*` nodes from the Geofabrik extract `nigeria-250101.osm.pbf` | ODbL 1.0 | 2025-01-01 |
+| Spill reports | NOSDRA's Nigerian Oil Spill Monitor. Its public dashboard loads the data from `oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json`, and Sheen reads the same address. | Free to use, per NOSDRA | Reports from 2005 onwards |
+| State and local government boundaries | OCHA's Nigeria boundaries on HDX (`cod-ab-nga`), version 1 | CC BY-IGO | 2019 |
+| Mangroves | Global Mangrove Watch version 3.0 (Bunting et al. 2022), Zenodo record 6894273 | CC BY 4.0 | 2007 and 2020 |
+| Settlements | Towns and villages from OpenStreetMap, using Geofabrik's file `nigeria-250101.osm.pbf` | ODbL 1.0 | 1 January 2025 |
 
-Spills are loaded with `sheen ingest spills`, boundaries with
-`sheen ingest boundaries`, and mangroves and settlements with
-`scripts/load_reference_layers.sh` followed by `sheen ingest layers`.
+Spill reports are loaded with `sheen ingest spills` and boundaries with
+`sheen ingest boundaries`. Mangroves and settlements are loaded with
+`scripts/load_reference_layers.sh`, then `sheen ingest layers`.
 
 ## The spill register
 
-21,171 records with 41 fields. The codes (`sab`, `la`, `cr` and so on) are
-decoded using the legend in the Oil Spill Monitor's own JavaScript; see
-`db/migrations/versions/0002_seed_reference_codes.py`. `gs` and `mys` appear
-in the data but not in the legend, so they're labelled unknown. The same code
-can mean different things in different fields: `co` is condensate as a
-contaminant and coastland as a habitat.
+The register has 21,171 reports with 41 fields each. Many fields use short
+codes, like `sab` for sabotage or `la` for land. The meanings come from the
+legend in the Oil Spill Monitor's own website code (see
+`db/migrations/versions/0002_seed_reference_codes.py`). Two codes, `gs` and
+`mys`, appear in the data but not in the legend, so they're marked as
+unknown. The same code can mean different things in different fields: `co`
+is condensate when it describes what spilled, and coastland when it
+describes where.
 
-The endpoint returns the whole register on every call. Each snapshot is
-stored with its SHA-256, which makes unchanged data easy to spot.
+Each download is the whole register. Sheen stores a fingerprint (a SHA-256
+hash) of every download, which makes it easy to tell when nothing has
+changed.
 
 ## Checks
 
-Mangrove area: the polygonised 2020 extent inside Nigeria's state boundaries
-comes to 833,978 ha. GMW's published figure for Nigeria in 2020 is 844,243 ha,
-1.2% higher; the difference is mangrove just seaward of the admin coastline.
+The mangrove maps were checked against Global Mangrove Watch's own figure.
+Sheen counts 833,978 hectares of mangrove inside Nigeria's state boundaries
+in 2020. Global Mangrove Watch gives 844,243 hectares for Nigeria, 1.2% more.
+The difference is mangrove just off the coastline, outside the state
+boundaries.
 
 ## Gaps
 
-OpenStreetMap's settlement coverage in the Delta is thin (5,392 places in the
-southern Nigeria window), so counts are a lower bound. GRID3 settlement
-extents would be better but are 2 to 3 GB.
+OpenStreetMap is missing many villages in the Delta (it has 5,392 places in
+the area Sheen uses), so settlement counts are lower than the real numbers.
+GRID3's settlement data would be better, but the files are 2 to 3 GB.

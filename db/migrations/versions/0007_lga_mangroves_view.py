@@ -1,8 +1,8 @@
 """split static per-LGA mangrove area out of the per-run LGA summary
 
-Mangrove area per LGA depends only on reference layers, but computing it
-dominated every analyse run (~70 s of intersections). It now lives in its own
-materialised view, refreshed by `sheen ingest layers`.
+It only changes when the mangrove data changes, but it was being worked out
+again on every analysis run, which took about 70 seconds. Now it has its own
+view, updated by `sheen ingest layers`.
 
 Revision ID: 0007
 Revises: 0006

@@ -6,7 +6,7 @@ import typer
 from sheen.logging import configure_logging
 
 app = typer.Typer(no_args_is_help=True, help="Niger Delta oil spill data pipeline.")
-ingest_app = typer.Typer(no_args_is_help=True, help="Fetch source data.")
+ingest_app = typer.Typer(no_args_is_help=True, help="Load data.")
 app.add_typer(ingest_app, name="ingest")
 
 
@@ -17,7 +17,7 @@ def _main() -> None:
 
 @app.command()
 def migrate() -> None:
-    """Apply database migrations."""
+    """Create or update the database tables."""
     from alembic import command
     from alembic.config import Config
 
@@ -30,7 +30,7 @@ def ingest_spills(
         Path | None, typer.Option(help="Load a saved snapshot instead of fetching live.")
     ] = None,
 ) -> None:
-    """Fetch the NOSDRA spill register into raw.spill_reports."""
+    """Download the NOSDRA spill register and save it as published."""
     from sheen.ingest import nosdra
 
     typer.echo(nosdra.ingest(from_file))
@@ -38,7 +38,7 @@ def ingest_spills(
 
 @ingest_app.command("boundaries")
 def ingest_boundaries() -> None:
-    """Load state and LGA boundaries into ref.admin_areas."""
+    """Load the state and local government boundaries."""
     from sheen.ingest import boundaries
 
     boundaries.ingest()
@@ -46,7 +46,7 @@ def ingest_boundaries() -> None:
 
 @ingest_app.command("layers")
 def ingest_layers() -> None:
-    """Promote GDAL-staged mangrove and settlement layers into ref.*."""
+    """Load the mangrove and settlement data prepared by the GDAL script."""
     from sheen.ingest import layers
 
     layers.promote()
@@ -54,7 +54,7 @@ def ingest_layers() -> None:
 
 @app.command()
 def validate() -> None:
-    """Validate the latest spill snapshot into clean.spills."""
+    """Check the latest download and save the results."""
     from sheen.validation import engine
 
     typer.echo(engine.validate())
@@ -62,7 +62,7 @@ def validate() -> None:
 
 @app.command()
 def analyse() -> None:
-    """Compute per-spill exposure and refresh regional/operator summaries."""
+    """Work out what was near each spill and update the summaries."""
     from sheen.analysis import exposure
 
     typer.echo(exposure.analyse())
@@ -74,7 +74,7 @@ def run(
         Path | None, typer.Option(help="Load a saved snapshot instead of fetching live.")
     ] = None,
 ) -> None:
-    """Ingest, validate and analyse in one go (the scheduled job)."""
+    """Download, check and analyse, in one go."""
     from sheen.analysis import exposure
     from sheen.ingest import nosdra
     from sheen.validation import engine

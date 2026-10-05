@@ -1,7 +1,7 @@
-"""Per-record parsing and checks. Pure functions, no database.
+"""Read each field of a report and note any problems. No database needed.
 
-For coordinates this doesn't pick a fix: it returns every plausible reading
-as a CoordCandidate, and the PostGIS steps choose between them.
+For coordinates it doesn't choose a fix. It lists every way the numbers
+could be read, and the PostGIS step picks one.
 """
 
 import math
@@ -15,7 +15,7 @@ from sheen.validation import issues as iss
 from sheen.validation.issues import Issue
 from sheen.validation.rules import Ruleset
 
-# Nigeria's land area sits inside this box; offshore fields extend to ~3N.
+# A box around Nigeria, reaching south far enough to cover the offshore fields.
 LAT_RANGE = (2.0, 14.5)
 LON_RANGE = (2.0, 15.0)
 
@@ -60,7 +60,7 @@ def _text(v: Any) -> str | None:
 
 
 def _parse_date(v: Any) -> date | None:
-    """Returns None for empty input; raises ValueError for garbage."""
+    """Return None if empty; raise ValueError if it isn't a date."""
     s = _text(v)
     if s is None:
         return None
@@ -175,10 +175,10 @@ def parse_habitats(raw: dict[str, Any]) -> list[str]:
 
 
 def parse_state(raw: dict[str, Any], states: dict[str, str]) -> tuple[str | None, list[Issue]]:
-    """Map NOSDRA's free-form state field to a two-letter code.
+    """Turn NOSDRA's state field into a two-letter code.
 
-    Seen in the wild: 'RI', 'FCT', 'KADUNA', 'KADUNA-NORTH', 'C R O S S  R I V E R',
-    'RI,IM', 'RI,undefined', 'N/A', and city names like 'GUSAU'.
+    Real examples: 'RI', 'FCT', 'KADUNA', 'KADUNA-NORTH', 'C R O S S  R I V E R',
+    'RI,IM', 'RI,undefined', 'N/A', and town names like 'GUSAU'.
     """
     s = _text(raw.get("statesaffected"))
     if s is None:
@@ -218,11 +218,11 @@ def parse_state(raw: dict[str, Any], states: dict[str, str]) -> tuple[str | None
 
 
 def _packed_dms(s: str, degree_digits: int) -> float | None:
-    """Parse degrees-minutes-seconds written without separators.
+    """Read degrees-minutes-seconds written with no spaces.
 
-    '050122.6' -> 5 deg 01' 22.6"; '04505482' -> 4 deg 50' 54.82" (two implied
-    decimals). Only zero-padded values qualify, which separates them from
-    plain degrees or grid metres.
+    '050122.6' is 5 deg 01' 22.6" and '04505482' is 4 deg 50' 54.82" (the last
+    two digits are decimals). Only values that start with 0 count, which tells
+    them apart from plain degrees or grid coordinates.
     """
     if not re.fullmatch(r"0\d{5,}(\.\d+)?", s):
         return None
@@ -257,7 +257,7 @@ def coordinate_candidates(raw: dict[str, Any], rules: Ruleset) -> tuple[list[Coo
         return [CoordCandidate("dms", dms[1], dms[0])], []
 
     if abs(lat) > 1000 and abs(lon) > 1000:
-        # Metres on a projected grid. Try each candidate CRS, both axis orders.
+        # Grid coordinates in metres. Try each grid, with the numbers both ways round.
         return [
             CoordCandidate("reprojected", x, y, srid)
             for srid in rules.coordinates.projected_candidate_srids
@@ -291,7 +291,7 @@ def normalize(
 
     contaminant = parse_contaminant(raw)
     if contaminant == "no":
-        found.append(iss.make("NOT_A_SPILL", "Contaminant recorded as 'no spill'", "contaminant"))
+        found.append(iss.make("NOT_A_SPILL", "The report says there was no spill", "contaminant"))
 
     operator = _text(raw.get("company"))
     if operator is None:
@@ -308,7 +308,7 @@ def normalize(
     cands, i = coordinate_candidates(raw, rules)
     found += i
 
-    # Bad dates stay in (with an error) so data-quality stats stay complete.
+    # Reports with bad dates are kept, with an error, so they still get counted.
     in_window = (
         incident is None
         or incident < rules.dates.earliest_plausible

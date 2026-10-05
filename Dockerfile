@@ -9,7 +9,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first so code changes don't bust the layer cache.
+# Install dependencies first, so changing the code doesn't reinstall them.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 

@@ -13,7 +13,7 @@ services:
       timeout: 3s
       retries: 30
 
-  # Local stand-in for S3 (raw snapshot archive).
+  # A local S3, for keeping copies of each download.
   s3:
     image: localstack/localstack:3.8.1
     environment:
@@ -34,7 +34,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
 
-  # One-off pipeline runs: `docker compose run --rm pipeline sheen run`
+  # To run the pipeline in Docker: `docker compose run --rm pipeline sheen run`
   pipeline:
     build: .
     profiles: ["pipeline"]
@@ -44,7 +44,7 @@ services:
       db: { condition: service_healthy }
       s3: { condition: service_started }
 
-  # GDAL tooling for one-off reference layer loads (see scripts/).
+  # GDAL, for loading the mangrove and settlement data (see scripts/).
   gdal:
     image: ghcr.io/osgeo/gdal:ubuntu-small-3.10.0
     profiles: ["tools"]

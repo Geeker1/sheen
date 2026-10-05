@@ -1,8 +1,7 @@
-"""Fetch the NOSDRA spill register and store it untouched.
+"""Download the NOSDRA spill register and save it exactly as published.
 
-The Oil Spill Monitor dashboard loads its data from a public JSON endpoint;
-we read the same endpoint. No cleaning happens here -- that is validation's
-job -- so raw.spill_reports is always a faithful copy of what was published.
+The Oil Spill Monitor website loads its data from a public address, and this
+reads the same one. Nothing is cleaned here; that happens in validation.
 """
 
 import hashlib
@@ -43,7 +42,7 @@ def parse(body: bytes) -> list[dict[str, Any]]:
 
 
 def ingest(from_file: Path | None = None) -> str:
-    """Load a snapshot from the live endpoint, or from a local file (for replays/tests)."""
+    """Save a fresh download, or a saved file if one is given."""
     s = get_settings()
     source = str(from_file) if from_file else s.nosdra_url
 

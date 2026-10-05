@@ -1,6 +1,6 @@
-"""What lies around each analysable spill, plus the LGA and operator summaries.
+"""What's near each usable spill, and the summaries by area and by company.
 
-Exposure is proximity, not measured damage.
+This measures what was near a spill, not how much damage it did.
 """
 
 import time
@@ -17,9 +17,8 @@ STEPS: list[tuple[str, str]] = [
     (
         "mangroves",
         """
-        -- Mangrove area within 1 km, using the GMW year closest to the incident.
-        -- Computed once per distinct point; polygons wholly inside the disc
-        -- skip ST_Intersection.
+        -- Mangrove area within 1 km of each spill, using the mangrove map closest
+        -- in time. Each point is worked out once, even if several reports share it.
         WITH pts AS (
             SELECT DISTINCT geom_utm,
                    CASE WHEN incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END AS year

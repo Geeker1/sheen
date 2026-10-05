@@ -11,14 +11,13 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://sheen:sheen@localhost:5433/sheen"
 
-    # Where raw snapshots are archived.
+    # Where copies of each download are kept.
     s3_bucket: str = "sheen-raw"
     s3_endpoint_url: str | None = None  # LocalStack
 
     nosdra_url: str = "https://oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json"
 
-    # Analysis window, 2005 to today. Raw keeps everything; validation drops
-    # records dated before the start.
+    # Reports in this period are analysed. Earlier ones are left out.
     window_start: date = date(2005, 1, 1)
     window_end: date = Field(default_factory=date.today)
 

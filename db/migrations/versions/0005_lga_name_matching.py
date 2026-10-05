@@ -1,12 +1,11 @@
 """LGA name matching function
 
-Plain trigram similarity on LGA names fails both ways: 'Ukwa West' scores
-0.33 against 'Saki West' (shared word) and 'Ahoada West' 0.50 against
-'Ahoada East', while a real typo like 'Deyema' vs 'Degema' scores 0.40.
+A standard text similarity score rated 'Ukwa West' and 'Saki West' (0.33),
+or 'Ahoada West' and 'Ahoada East' (0.50), as more alike than the real typo
+'Deyema' and 'Degema' (0.40).
 
-ref.lga_name_similarity compares the core name with compass words and
-'LGA' removed, and returns 0 when the two names carry different compass
-words, so twin LGAs (Ukwa East/West) never match each other.
+This function ignores words like North, West and 'LGA', and treats names
+with different directions, like Ukwa East and Ukwa West, as different places.
 
 Revision ID: 0005
 Revises: 0004

@@ -1,8 +1,8 @@
 """seed reference codes and states
 
-Code labels are taken from the Nigerian Oil Spill Monitor map legend
-(oilspillmonitor.ng, js/index bundle). 'gs' and 'mys' appear in the data but
-not in the legend; they are labelled as unknown rather than guessed.
+The code meanings come from the map legend on the Oil Spill Monitor website.
+'gs' and 'mys' appear in the data but not in the legend, so they're marked
+unknown instead of guessed.
 
 Revision ID: 0002
 Revises: 0001

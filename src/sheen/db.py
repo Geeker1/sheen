@@ -26,7 +26,8 @@ def get_pool() -> ConnectionPool[psycopg.Connection[DictRow]]:
 
 @contextmanager
 def connect() -> Iterator[psycopg.Connection[DictRow]]:
-    """A pooled connection. Commits on clean exit, rolls back on error."""
+    """Borrow a database connection. Changes are saved if the block ends without
+    an error, and undone if it doesn't."""
     with get_pool().connection() as conn:
         yield conn
 

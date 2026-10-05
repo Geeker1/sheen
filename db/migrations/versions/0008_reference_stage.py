@@ -1,7 +1,7 @@
 """record reference-layer loads under their own stage
 
-Boundary and layer loads used to be recorded as 'ingest', so "latest
-successful ingest" could pick one of them instead of a spill snapshot.
+These used to be recorded as 'ingest', so validation could pick one of them
+by mistake instead of the latest spill download.
 
 Revision ID: 0008
 Revises: 0007

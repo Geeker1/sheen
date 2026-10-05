@@ -1,7 +1,7 @@
-"""Load Nigeria's state and LGA boundaries (OCHA COD-AB, CC BY-IGO) into ref.admin_areas.
+"""Load Nigeria's state and local government boundaries from OCHA.
 
-Ward (admin3) boundaries in this release only cover Borno, Adamawa and Yobe,
-so LGA is the finest level available for the Niger Delta. See docs/DECISIONS.md.
+The ward boundaries in this dataset only cover three north-eastern states,
+so local government area is the smallest area used.
 """
 
 import io
@@ -60,7 +60,7 @@ def ingest() -> None:
 
         with connect() as conn, conn.cursor() as cur:
             cur.execute("TRUNCATE ref.admin_areas CASCADE")
-            # Parents (states) sort before LGAs, satisfying the self-reference.
+            # States come before their areas, so each area's state already exists.
             cur.executemany(
                 """INSERT INTO ref.admin_areas (pcode, level, name, parent_pcode, state_code, geom)
                    SELECT %s, %s, %s, %s, (SELECT code FROM ref.states WHERE name = %s),

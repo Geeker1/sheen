@@ -275,7 +275,7 @@ def _uncursor(cursor: str) -> int:
 
 
 def _where(f: SpillFilter | None) -> tuple[str, dict[str, Any]]:
-    # Clauses are fixed strings; only values go through parameters.
+    # The SQL pieces are fixed; values from the user are only passed as parameters.
     clauses, params = ["TRUE"], {}
     if f:
         for attr, clause in [
@@ -328,7 +328,7 @@ class Query:
         r = await db.fetch_one(f"{SPILL_SELECT} WHERE s.spill_id = %s", (str(id),))
         return Spill.of(r) if r else None
 
-    @strawberry.field(description="Trace one spill from the raw record to its analysis result.")
+    @strawberry.field(description="Every step taken with one report, from what was published to the result.")
     async def explain_spill(self, info: Info, id: strawberry.ID) -> Explanation | None:
         r = await db.fetch_one(f"{SPILL_SELECT} WHERE s.spill_id = %s", (str(id),))
         if r is None:
@@ -372,7 +372,7 @@ class Query:
         )
         return [_from_row(OperatorQuality, r) for r in rows]
 
-    @strawberry.field(description="Every validation issue type, with how often it occurs.")
+    @strawberry.field(description="Every kind of problem the checks find, and how often.")
     async def issue_types(self) -> list[IssueType]:
         counts = {
             r["code"]: r["n"]

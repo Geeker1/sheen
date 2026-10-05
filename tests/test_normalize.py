@@ -41,8 +41,8 @@ def test_clean_record_has_no_issues() -> None:
     n = run()
     assert n.issues == []
     assert n.quantity_bbl == Decimal("12.5")
-    # The swapped reading also falls in the bounding box, so it is offered too;
-    # PostGIS keeps the reported point whenever that one is plausible.
+    # The swapped reading also falls inside the box, so it's offered too.
+    # PostGIS keeps the reported point whenever it makes sense.
     assert n.coord_candidates[0] == CoordCandidate("reported", 7.0, 4.75)
 
 
@@ -164,7 +164,7 @@ class TestCoordinateCandidates:
         assert (round(c.y, 6), round(c.x, 6)) == expected
 
     def test_dms_requires_valid_minutes_and_seconds(self) -> None:
-        # 75 minutes isn't DMS; falls through to the projected-grid branch.
+        # 75 minutes isn't valid, so it's treated as grid coordinates instead.
         methods = {c.method for c in run(latitude="04755482", longitude="006281269").coord_candidates}
         assert "dms" not in methods
 

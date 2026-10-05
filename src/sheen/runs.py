@@ -1,7 +1,7 @@
-"""Pipeline run bookkeeping.
+"""Keep a record of every pipeline run.
 
-The run row is committed before the work starts, so a crashed run still
-leaves a record behind.
+The record is saved before the work starts, so even a run that crashes
+leaves a trace.
 """
 
 import time
