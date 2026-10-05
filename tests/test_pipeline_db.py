@@ -9,6 +9,7 @@ Two square "states" side by side, Rivers split into two LGAs:
          5.5E        6.5E        7.0E        7.5E
 """
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -97,3 +98,33 @@ def test_every_run_is_recorded(validated: dict[str, dict[str, Any]]) -> None:
             (r["stage"], r["status"]) for r in conn.execute("SELECT stage, status FROM ops.pipeline_runs")
         }
     assert {("ingest", "succeeded"), ("validate", "succeeded")} <= runs
+
+
+def test_unchanged_download_is_skipped(validated: dict[str, dict[str, Any]], snapshot: Path) -> None:
+    from sheen.ingest import nosdra
+
+    assert nosdra.ingest(snapshot) is None  # same file as the fixture loaded
+    assert nosdra.ingest(snapshot, force=True) is not None
+    with connect() as conn:
+        statuses = [
+            r["status"]
+            for r in conn.execute(
+                "SELECT status FROM ops.pipeline_runs WHERE stage = 'ingest' ORDER BY started_at DESC LIMIT 2"
+            )
+        ]
+    assert statuses == ["succeeded", "skipped"]
+
+
+def test_mangrove_figures_are_only_worked_out_once(validated: dict[str, dict[str, Any]]) -> None:
+    from sheen.analysis import exposure
+
+    def saved() -> int:
+        with connect() as conn:
+            row = conn.execute("SELECT count(*) AS n FROM analysis.point_mangroves").fetchone()
+        return row["n"] if row else 0
+
+    exposure.analyse()
+    first = saved()
+    exposure.analyse()
+    assert first > 0
+    assert saved() == first

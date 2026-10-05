@@ -15,31 +15,39 @@ log = structlog.get_logger()
 STEPS: list[tuple[str, str]] = [
     ("reset", "TRUNCATE analysis.spill_exposure"),
     (
+        # Mangrove area within 1 km, worked out only for locations not seen
+        # before. Spills before 2014 use the 2007 mangrove map, later ones 2020.
+        "new_mangrove_points",
+        """
+        WITH points AS (
+            SELECT DISTINCT ON (point_key, year) point_key, year, geom_utm
+            FROM (
+                SELECT md5(ST_AsBinary(geom_utm)) AS point_key, geom_utm,
+                       CASE WHEN incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END AS year
+                FROM clean.spills WHERE analysable
+            ) s
+            WHERE NOT EXISTS (SELECT 1 FROM analysis.point_mangroves saved
+                              WHERE saved.point_key = s.point_key AND saved.year = s.year)
+        )
+        INSERT INTO analysis.point_mangroves (point_key, year, ha_1km)
+        SELECT p.point_key, p.year,
+               coalesce(sum(CASE WHEN ST_CoveredBy(m.geom_utm, disc) THEN ST_Area(m.geom_utm)
+                                 ELSE ST_Area(ST_Intersection(m.geom_utm, disc)) END), 0) / 1e4
+        FROM points p
+        CROSS JOIN LATERAL ST_Buffer(p.geom_utm, 1000, 16) AS disc
+        LEFT JOIN ref.mangroves m ON m.year = p.year AND ST_DWithin(m.geom_utm, p.geom_utm, 1000)
+        GROUP BY p.point_key, p.year
+    """,
+    ),
+    (
         "mangroves",
         """
-        -- Mangrove area within 1 km of each spill, using the mangrove map closest
-        -- in time. Each point is worked out once, even if several reports share it.
-        WITH pts AS (
-            SELECT DISTINCT geom_utm,
-                   CASE WHEN incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END AS year
-            FROM clean.spills WHERE analysable
-        ),
-        ha AS (
-            SELECT p.geom_utm, p.year,
-                   coalesce(sum(CASE WHEN ST_CoveredBy(m.geom_utm, b.disc) THEN ST_Area(m.geom_utm)
-                                     ELSE ST_Area(ST_Intersection(m.geom_utm, b.disc)) END), 0) / 1e4
-                       AS ha_1km
-            FROM pts p
-            CROSS JOIN LATERAL (SELECT ST_Buffer(p.geom_utm, 1000, 16) AS disc) b
-            LEFT JOIN ref.mangroves m
-                   ON m.year = p.year AND ST_DWithin(m.geom_utm, p.geom_utm, 1000)
-            GROUP BY p.geom_utm, p.year
-        )
         INSERT INTO analysis.spill_exposure (spill_id, run_id, mangrove_year, mangrove_ha_1km)
-        SELECT s.spill_id, %(run_id)s, ha.year, ha.ha_1km
+        SELECT s.spill_id, %(run_id)s, saved.year, saved.ha_1km
         FROM clean.spills s
-        JOIN ha ON ha.geom_utm = s.geom_utm
-               AND ha.year = CASE WHEN s.incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END
+        JOIN analysis.point_mangroves saved
+          ON saved.point_key = md5(ST_AsBinary(s.geom_utm))
+         AND saved.year = CASE WHEN s.incident_date < DATE '2014-01-01' THEN 2007 ELSE 2020 END
         WHERE s.analysable
     """,
     ),

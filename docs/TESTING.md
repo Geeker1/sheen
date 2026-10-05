@@ -34,8 +34,8 @@ needs to be running. You don't need to start anything else.
 | Test file | What it checks | Needs Docker |
 |---|---|---|
 | `tests/test_normalize.py` (49 tests) | Reading each field of a report: dates, quantities, causes, state names, and every coordinate format | No |
-| `tests/test_pipeline_db.py` (13 tests) | The full check on a small made-up map: fixing locations, rejecting fixes that don't match the report, mismatches, duplicates, and the area name matcher | Yes |
-| `tests/test_api.py` (13 tests) | The API: queries, filters, paging, `explainSpill`, the map data and the trends endpoint | Yes |
+| `tests/test_pipeline_db.py` (15 tests) | The full check on a small made-up map: fixing locations, rejecting fixes that don't match the report, mismatches, duplicates, the area name matcher, skipping unchanged downloads and reusing saved mangrove figures | Yes |
+| `tests/test_api.py` (11 tests) | The API: queries, filters, paging, `explainSpill`, the map data and the trends endpoint | Yes |
 
 A few useful variations:
 
@@ -44,10 +44,9 @@ uv run pytest tests/test_normalize.py   # just the tests that don't need Docker
 uv run pytest -k duplicate -v           # just the tests about duplicates
 ```
 
-The GitHub checks also build the Docker image and the map:
+The GitHub checks also build the map:
 
 ```bash
-docker build -t sheen:local .
 cd web && npm ci && npm run build
 ```
 
@@ -56,7 +55,7 @@ cd web && npm ci && npm run build
 This downloads about 760 MB the first time.
 
 ```bash
-make up migrate       # start the database and a local S3, create the tables
+make up migrate       # start the database and create the tables
 make reference-data   # download the mangrove and OpenStreetMap files
 make layers           # load boundaries, mangroves and settlements (about 15 minutes)
 make run              # download the register, check it and analyse it (about a minute)
@@ -74,6 +73,13 @@ stage=analyse   rows_out=13884
 NOSDRA updates the register from time to time, so your numbers may be a
 little different.
 
+Run `make run` again straight away and it should finish in a few seconds,
+saying the register hasn't changed. To run everything anyway:
+
+```bash
+uv run --env-file .env sheen run --force
+```
+
 ### Look at the results in the database
 
 ```bash
@@ -81,7 +87,7 @@ docker compose exec db psql -U sheen -d sheen
 ```
 
 ```sql
--- The latest runs: did they work, how many rows, how long they took
+-- The latest runs: did they work (or were skipped), how many rows, how long they took
 SELECT stage, status, rows_in, rows_out, round(extract(epoch FROM finished_at - started_at)) AS secs
 FROM ops.pipeline_runs ORDER BY started_at DESC LIMIT 6;
 
@@ -149,12 +155,10 @@ Some queries to paste into the explorer at http://localhost:8000/graphql:
 ```
 
 ```graphql
-# Summaries
+# Totals, and how often each company leaves things out
 {
   summary { reportsInWindow analysable reportedBbl }
-  lgas(stateCode: "RI", limit: 5) { name spills reportedBbl mangroveHa2020 mangroveChangePct }
-  issueTypes { code severity count }
-  pipelineRuns(limit: 3) { stage status rowsOut details }
+  operators(minReports: 150) { operator reports shareUnplaceable shareMissingQuantity }
 }
 ```
 
@@ -187,4 +191,3 @@ On the map you should see:
 | `No successful ingest` | Run `make run`, or `sheen ingest spills`, before `sheen validate` |
 | The Docker tests are skipped | Docker isn't running |
 | The map is empty | Start the API with `make api` |
-| An `archive.failed` warning | The local S3 isn't running (`docker compose up -d s3`). The download is still saved in the database, so nothing is lost. |

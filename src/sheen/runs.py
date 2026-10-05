@@ -26,6 +26,7 @@ class Run:
     rows_in: int | None = None
     rows_out: int | None = None
     source_sha256: str | None = None
+    skipped: bool = False
     details: dict[str, Any] = field(default_factory=dict)
 
 
@@ -55,9 +56,10 @@ def pipeline_run(
         log.exception("run.failed", duration_s=round(time.monotonic() - started, 2))
         raise
     else:
-        _finish(run, "succeeded")
+        status = "skipped" if run.skipped else "succeeded"
+        _finish(run, status)
         log.info(
-            "run.succeeded",
+            f"run.{status}",
             rows_in=run.rows_in,
             rows_out=run.rows_out,
             duration_s=round(time.monotonic() - started, 2),
@@ -79,11 +81,20 @@ def _finish(run: Run, status: str, error: str | None = None) -> None:
 
 
 def latest_successful(stage: str) -> uuid.UUID | None:
+    row = _latest(stage)
+    return row["run_id"] if row else None
+
+
+def latest_hash(stage: str) -> str | None:
+    row = _latest(stage)
+    return row["source_sha256"] if row else None
+
+
+def _latest(stage: str) -> Any:
     with connect() as conn:
-        row = conn.execute(
-            """SELECT run_id FROM ops.pipeline_runs
+        return conn.execute(
+            """SELECT run_id, source_sha256 FROM ops.pipeline_runs
                WHERE stage = %s AND status = 'succeeded'
                ORDER BY finished_at DESC LIMIT 1""",
             (stage,),
         ).fetchone()
-    return row["run_id"] if row else None

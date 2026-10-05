@@ -17,7 +17,6 @@ dependencies = [
     "httpx",
     "structlog",
     "typer",
-    "boto3",
 ]
 
 [dependency-groups]
@@ -28,7 +27,6 @@ dev = [
     "ruff",
     "mypy",
     "types-pyyaml",
-    "boto3-stubs[s3]",
 ]
 
 [project.scripts]

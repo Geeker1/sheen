@@ -60,6 +60,8 @@ def promote() -> None:
             )
             counts[table] = cur.rowcount
             _record_source(conn, table, run.run_id)
+            # Saved mangrove figures were worked out from the old data.
+            conn.execute("DELETE FROM analysis.point_mangroves WHERE year = %s", (year,))
 
         if _staged(conn, "osm_places"):
             conn.execute("TRUNCATE ref.settlements")

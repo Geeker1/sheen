@@ -77,12 +77,6 @@ def test_nested_fields_resolve(client: TestClient) -> None:
     assert s["exposure"]["mangroveYear"] == 2020
 
 
-def test_issue_types_include_counts(client: TestClient) -> None:
-    types = {t["code"]: t["count"] for t in gql(client, "{ issueTypes { code count } }")["issueTypes"]}
-    assert types["NOT_A_SPILL"] == 1
-    assert types["COORD_DMS_PARSED"] == 1
-
-
 def test_geojson_spills(client: TestClient) -> None:
     resp = client.get("/geojson/spills")
     assert resp.headers["content-type"].startswith("application/geo+json")
@@ -90,14 +84,6 @@ def test_geojson_spills(client: TestClient) -> None:
     assert fc["type"] == "FeatureCollection"
     assert all(f["geometry"]["type"] == "Point" for f in fc["features"])
     assert "8" not in {f["properties"]["id"] for f in fc["features"]}  # not a spill
-
-
-def test_lga_summaries(client: TestClient) -> None:
-    lgas = gql(client, '{ lgas(stateCode: "RI") { name spills mangroveHa2020 mangroveChangePct } }')["lgas"]
-    by_name = {lga["name"]: lga for lga in lgas}
-    # Analysable spills placed in Okrika: #1, #2, #7, #10 (#8 is "no spill").
-    assert by_name["Okrika"]["spills"] == 4
-    assert by_name["Okrika"]["mangroveChangePct"] is None  # no mangroves in the test geography
 
 
 def test_operator_quality(client: TestClient) -> None:

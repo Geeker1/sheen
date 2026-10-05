@@ -24,16 +24,17 @@ def migrate() -> None:
     command.upgrade(Config("alembic.ini"), "head")
 
 
+FromFile = Annotated[Path | None, typer.Option(help="Use a saved file instead of downloading.")]
+Force = Annotated[bool, typer.Option(help="Carry on even if the register hasn't changed.")]
+UNCHANGED = "The register hasn't changed since the last download, so there's nothing to do."
+
+
 @ingest_app.command("spills")
-def ingest_spills(
-    from_file: Annotated[
-        Path | None, typer.Option(help="Load a saved snapshot instead of fetching live.")
-    ] = None,
-) -> None:
+def ingest_spills(from_file: FromFile = None, force: Force = False) -> None:
     """Download the NOSDRA spill register and save it as published."""
     from sheen.ingest import nosdra
 
-    typer.echo(nosdra.ingest(from_file))
+    typer.echo(nosdra.ingest(from_file, force) or UNCHANGED)
 
 
 @ingest_app.command("boundaries")
@@ -69,16 +70,14 @@ def analyse() -> None:
 
 
 @app.command()
-def run(
-    from_file: Annotated[
-        Path | None, typer.Option(help="Load a saved snapshot instead of fetching live.")
-    ] = None,
-) -> None:
+def run(from_file: FromFile = None, force: Force = False) -> None:
     """Download, check and analyse, in one go."""
     from sheen.analysis import exposure
     from sheen.ingest import nosdra
     from sheen.validation import engine
 
-    nosdra.ingest(from_file)
+    if nosdra.ingest(from_file, force) is None:
+        typer.echo(UNCHANGED)
+        return
     engine.validate()
     typer.echo(exposure.analyse())

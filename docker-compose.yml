@@ -13,37 +13,6 @@ services:
       timeout: 3s
       retries: 30
 
-  # A local S3, for keeping copies of each download.
-  s3:
-    image: localstack/localstack:3.8.1
-    environment:
-      SERVICES: s3
-    ports: ["4566:4566"]
-
-  api:
-    build: .
-    command: ["uvicorn", "sheen.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    environment: &app-env
-      SHEEN_DATABASE_URL: postgresql://sheen:sheen@db:5432/sheen
-      SHEEN_S3_ENDPOINT_URL: http://s3:4566
-      SHEEN_S3_BUCKET: sheen-raw
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: eu-west-1
-    ports: ["8000:8000"]
-    depends_on:
-      db: { condition: service_healthy }
-
-  # To run the pipeline in Docker: `docker compose run --rm pipeline sheen run`
-  pipeline:
-    build: .
-    profiles: ["pipeline"]
-    environment: *app-env
-    volumes: ["./data:/app/data"]
-    depends_on:
-      db: { condition: service_healthy }
-      s3: { condition: service_started }
-
   # GDAL, for loading the mangrove and settlement data (see scripts/).
   gdal:
     image: ghcr.io/osgeo/gdal:ubuntu-small-3.10.0

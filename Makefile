@@ -5,9 +5,9 @@ UV := uv run --env-file .env
 help:   ## Show the commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
-up:     ## Start the database and a local S3
+up:     ## Start the database
 	cp -n .env.example .env || true
-	docker compose up -d db s3
+	docker compose up -d db
 
 down:   ## Stop them (the data is kept)
 	docker compose down

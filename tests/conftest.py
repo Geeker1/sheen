@@ -107,9 +107,8 @@ def _record(id: str, **kw: Any) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="session")
-def validated(geography: None, tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, Any]]:
-    from sheen.ingest import nosdra
-    from sheen.validation import engine
+def snapshot(geography: None, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The test register, written to a file the way NOSDRA would serve it."""
 
     grid_rivers = _grid(7.25, 5.0, 26392)  # Okrika, in the Mid Belt
     records = [
@@ -137,11 +136,17 @@ def validated(geography: None, tmp_path_factory: pytest.TempPathFactory) -> dict
         # Nowhere near Nigeria.
         _record("11", latitude="20.0", longitude="16.0"),
     ]
-    snapshot = tmp_path_factory.mktemp("snap") / "spills.json"
-    snapshot.write_text(json.dumps(records))
+    path = tmp_path_factory.mktemp("snap") / "spills.json"
+    path.write_text(json.dumps(records))
+    return path
 
-    nosdra.archive = lambda *a, **k: None  # type: ignore[assignment]  # no S3 in tests
-    nosdra.ingest(Path(snapshot))
+
+@pytest.fixture(scope="session")
+def validated(snapshot: Path) -> dict[str, dict[str, Any]]:
+    from sheen.ingest import nosdra
+    from sheen.validation import engine
+
+    nosdra.ingest(snapshot)
     engine.validate()
 
     from sheen.db import connect

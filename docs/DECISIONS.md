@@ -9,6 +9,12 @@ changed. The checked version is rebuilt from it each time, all at once, so
 nobody ever sees a half-finished result. If the checks change, the old
 results can be rebuilt from the saved download.
 
+If a download is exactly the same as the last one (Sheen compares a
+fingerprint of the file), nothing else runs. When the register has changed,
+every report is checked again, because some checks compare reports with each
+other, like finding duplicates. That takes about 20 seconds, so it isn't
+worth doing anything cleverer yet.
+
 Reports with serious problems are kept and marked as unusable, not deleted.
 Otherwise the figures on how much of the register is usable would be wrong.
 
@@ -95,6 +101,12 @@ wider picture, so it was dropped.
 
 Spills before 2014 are compared with the 2007 mangrove map, and later ones
 with the 2020 map.
+
+Working out mangrove near each spill is the slowest step, so the answer is
+saved for each location and map year. A later run only works it out for
+locations it hasn't seen before, which takes it from about 16 seconds to
+under one. The saved figures are cleared whenever the mangrove data is
+reloaded.
 
 ## Tools
 

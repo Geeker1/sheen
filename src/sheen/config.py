@@ -11,10 +11,6 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://sheen:sheen@localhost:5433/sheen"
 
-    # Where copies of each download are kept.
-    s3_bucket: str = "sheen-raw"
-    s3_endpoint_url: str | None = None  # LocalStack
-
     nosdra_url: str = "https://oilspillmonitor.ng/api/spill-data.php?dataset=nosdra&format=json"
 
     # Reports in this period are analysed. Earlier ones are left out.

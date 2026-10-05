@@ -76,7 +76,7 @@ More in [docs/FINDINGS.md](docs/FINDINGS.md).
 ```mermaid
 flowchart TD
     src["NOSDRA spill register<br/>about 21,000 reports"]
-    raw[("raw<br/>exactly as published<br/>+ copy in S3")]
+    raw[("raw<br/>exactly as published")]
     ref[("Reference layers<br/>boundaries, mangroves,<br/>settlements")]
 
     subgraph validate ["Validate"]
@@ -103,7 +103,8 @@ flowchart TD
 ```
 
 1. **Ingest** downloads the whole register and saves it exactly as it was
-   published, in Postgres and in S3.
+   published. If nothing has changed since the last download, it stops
+   there.
 2. **Validate** reads each report in Python
    ([normalize.py](src/sheen/validation/normalize.py)), then checks the
    locations in PostGIS ([spatial.py](src/sheen/validation/spatial.py)).
@@ -117,7 +118,8 @@ flowchart TD
    location.
 4. **Analyse** works out how much mangrove is within 1 km of each spill and
    which settlements are nearby, and builds summaries for each local
-   government area and each company.
+   government area and each company. Mangrove figures are saved for each
+   location, so later runs only work them out for new ones.
 
 Every run is logged in the database, and every result points back to the run
 that made it. That is how `explainSpill` can show the full history of a
@@ -129,14 +131,14 @@ Why things are done this way is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Python 3.12, FastAPI, Strawberry GraphQL, psycopg 3 with plain SQL,
 PostgreSQL 16 with PostGIS 3.4, Alembic, GDAL, pytest with testcontainers,
-Docker, GitHub Actions, React with MapLibre.
+Docker Compose, GitHub Actions, React with MapLibre.
 
 ## Running it
 
 You need Docker, [uv](https://docs.astral.sh/uv/) and Node 22.
 
 ```bash
-make up migrate       # start the database and a local S3, then create the tables
+make up migrate       # start the database, then create the tables
 make reference-data   # download the mangrove and OpenStreetMap files (about 760 MB)
 make layers           # load boundaries, mangroves and settlements (once, about 15 minutes)
 make run              # download the register, check it and analyse it
@@ -175,6 +177,7 @@ to check everything by hand.
 - [DECISIONS.md](docs/DECISIONS.md): why it's built the way it is
 - [DATA_SOURCES.md](docs/DATA_SOURCES.md): where the data comes from
 - [TESTING.md](docs/TESTING.md): how to check it works
+- [WEAKNESSES.md](docs/WEAKNESSES.md): what isn't right yet
 
 ## Data
 

@@ -6,7 +6,6 @@ reads the same one. Nothing is cleaned here; that happens in validation.
 
 import hashlib
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +15,7 @@ from psycopg.types.json import Jsonb
 
 from sheen.config import get_settings
 from sheen.db import connect
-from sheen.runs import pipeline_run
-from sheen.storage import archive
+from sheen.runs import latest_hash, pipeline_run
 
 log = structlog.get_logger()
 
@@ -41,20 +39,23 @@ def parse(body: bytes) -> list[dict[str, Any]]:
     return records
 
 
-def ingest(from_file: Path | None = None) -> str:
-    """Save a fresh download, or a saved file if one is given."""
+def ingest(from_file: Path | None = None, force: bool = False) -> str | None:
+    """Save a fresh download, or a saved file if one is given.
+
+    Returns the run id, or None if the register is the same as last time
+    (unless force is set), in which case nothing is saved.
+    """
     s = get_settings()
     source = str(from_file) if from_file else s.nosdra_url
 
     with pipeline_run("ingest", source=source) as run:
         body = from_file.read_bytes() if from_file else fetch(s.nosdra_url)
         run.source_sha256 = hashlib.sha256(body).hexdigest()
+        if not force and run.source_sha256 == latest_hash("ingest"):
+            run.skipped = True
+            return None
         records = parse(body)
         run.rows_in = len(records)
-
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        uri = archive(f"nosdra/{stamp}_{run.source_sha256[:12]}.json", body)
-        run.details["archive_uri"] = uri
 
         with (
             connect() as conn,

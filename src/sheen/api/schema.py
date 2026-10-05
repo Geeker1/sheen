@@ -12,7 +12,6 @@ from strawberry.types import Info
 from sheen.api import db
 from sheen.api.loaders import Loaders
 from sheen.config import get_settings
-from sheen.validation.issues import CATALOGUE
 
 MAX_PAGE = 200
 
@@ -185,29 +184,6 @@ class Explanation:
 
 
 @strawberry.type
-class LgaSummary:
-    pcode: str
-    name: str
-    state: str
-    state_code: str | None
-    area_km2: float
-    spills: int
-    reported_bbl: float | None
-    spills_sabotage: int
-    spills_operational: int
-    mangrove_ha_2007: float
-    mangrove_ha_2020: float
-    reports_placed: int
-    share_missing_quantity: float | None
-
-    @strawberry.field
-    def mangrove_change_pct(self) -> float | None:
-        if not self.mangrove_ha_2007:
-            return None
-        return round((self.mangrove_ha_2020 - self.mangrove_ha_2007) / self.mangrove_ha_2007 * 100, 1)
-
-
-@strawberry.type
 class OperatorQuality:
     operator: str
     reports: int
@@ -218,28 +194,6 @@ class OperatorQuality:
     share_missing_jiv: float
     share_sabotage_of_known_cause: float | None
     reported_bbl: float | None
-
-
-@strawberry.type
-class IssueType:
-    code: str
-    severity: str
-    description: str
-    count: int
-
-
-@strawberry.type
-class PipelineRun:
-    run_id: strawberry.ID
-    stage: str
-    status: str
-    ruleset_version: str | None
-    rows_in: int | None
-    rows_out: int | None
-    details: JSON
-    error: str | None
-    started_at: datetime
-    finished_at: datetime | None
 
 
 @strawberry.type
@@ -352,59 +306,12 @@ class Query:
         )
 
     @strawberry.field
-    async def lgas(
-        self, state_code: str | None = None, with_spills_only: bool = True, limit: int = 100
-    ) -> list[LgaSummary]:
-        rows = await db.fetch(
-            """SELECT * FROM analysis.lga_summary
-               WHERE (%(state)s::text IS NULL OR state_code = %(state)s)
-                 AND (NOT %(only)s OR spills > 0)
-               ORDER BY spills DESC LIMIT %(limit)s""",
-            {"state": state_code, "only": with_spills_only, "limit": min(limit, 800)},
-        )
-        return [_from_row(LgaSummary, r) for r in rows]
-
-    @strawberry.field
     async def operators(self, min_reports: int = 20) -> list[OperatorQuality]:
         rows = await db.fetch(
             "SELECT * FROM analysis.operator_quality WHERE reports >= %s ORDER BY reports DESC",
             (min_reports,),
         )
         return [_from_row(OperatorQuality, r) for r in rows]
-
-    @strawberry.field(description="Every kind of problem the checks find, and how often.")
-    async def issue_types(self) -> list[IssueType]:
-        counts = {
-            r["code"]: r["n"]
-            for r in await db.fetch("SELECT code, count(*) AS n FROM clean.spill_issues GROUP BY code")
-        }
-        return [
-            IssueType(
-                code=t.code, severity=t.severity.value, description=t.description, count=counts.get(t.code, 0)
-            )
-            for t in CATALOGUE.values()
-        ]
-
-    @strawberry.field
-    async def pipeline_runs(self, limit: int = 20) -> list[PipelineRun]:
-        rows = await db.fetch(
-            "SELECT * FROM ops.pipeline_runs ORDER BY started_at DESC LIMIT %s", (min(limit, 100),)
-        )
-        return [
-            PipelineRun(
-                run_id=strawberry.ID(str(r["run_id"])),
-                stage=r["stage"],
-                status=r["status"],
-                ruleset_version=r["ruleset_version"],
-                rows_in=r["rows_in"],
-                rows_out=r["rows_out"],
-                details=r["details"],
-                error=r["error"],
-                started_at=r["started_at"],
-                finished_at=r["finished_at"],
-            )
-            for r in rows
-        ]
 
     @strawberry.field
     async def summary(self) -> Summary:
