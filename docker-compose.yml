@@ -1,3 +1,6 @@
+# Fixed name, so the database volume does not depend on the folder name.
+name: sheen
+
 services:
   db:
     image: postgis/postgis:16-3.4
