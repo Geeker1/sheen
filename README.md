@@ -6,11 +6,57 @@ checks every record, recovers coordinates that were published in the wrong
 format, and works out what was near each spill: mangroves, settlements, and
 the local government area (LGA).
 
-<!--
-  TODO (author): 2-3 sentences in your own words on why this matters to you,
-  e.g. growing up in Port Harcourt, what spills meant for people you know.
-  Keep it specific and short; the rest of the README is technical.
--->
+## Why I built this
+
+I was born and grew up in Port Harcourt, in the Niger Delta. My family is from
+Ogoni, and oil spills have been part of life there for as long as I can
+remember. I had never thought of building something like this until recently,
+when I started looking at how location data collected in the field gets
+checked and turned into something people can rely on. It made me want to do
+the same for the spills back home.
+
+The damage is well documented. In 2011 the UN Environment Programme found
+families in Nsisioken Ogale, in Ogoniland, drinking well water with benzene
+at over 900 times the WHO guideline
+([UNEP Ogoniland assessment](https://coastalcare.org/2011/08/oil-pollution-in-niger-delta-environmental-assessment-of-ogoniland-report-unep/)).
+A 2017 study found that babies whose mothers lived within 10 km of a spill
+before the pregnancy were twice as likely to die in their first month
+([Bruederle and Hodler, CESifo](https://www.cesifo.org/DocDL/cesifo1_wp6653.pdf)).
+The 2008 spills at Bodo destroyed mangroves and fishing grounds that about
+15,600 fishermen depended on, and ended in a settlement with Shell in 2015
+([Leigh Day](https://www.leighday.co.uk/news/cases-and-testimonials/cases/shell-bodo/)).
+
+The official record of these spills is thinner than the damage. Causes and
+volumes come from investigations led by the operators themselves, and a spill
+recorded as sabotage brings the community no compensation
+([Amnesty International](https://amnesty.org/en/wp-content/uploads/2021/05/AFR4479702018ENGLISH.pdf)).
+Looking at the register for Ogoni's four LGAs (Eleme, Gokana, Khana and Tai)
+shows what that means in practice:
+
+- 567 reports from 2005 to 2024 can be placed in Ogoni. 147 of them can't
+  be used: 131 are recorded as "no spill", 8 are marked invalid and 8 have
+  no date.
+- The first 2008 Bodo spill is in the register as 1,640 barrels, the
+  operator's figure. An independent assessment for Amnesty put it at 103,000
+  to 311,000 barrels
+  ([Amnesty International](https://www.amnesty.org.uk/knowledge-hub/all-resources/shells-wildly-inaccurate-reporting-niger-delta-oil-spill-exposed/)).
+- Neither of the 2008 Bodo spills has coordinates, so any map made from the
+  register leaves out the best-known spills in Ogoni's recent history.
+
+Sheen doesn't fix the register, but it makes it easier to see what it says
+and where it falls short, for Ogoni and for every other community in the
+Delta:
+
+- each report with a usable location is placed on a map with its LGA, and
+  each one without says why;
+- for any spill, `explainSpill` shows exactly what the operator published and
+  every step taken with it, so a journalist, researcher or community group
+  can check a record instead of trusting a summary;
+- per-operator figures show who leaves out locations, volumes or causes;
+- mangroves and settlements near each spill show what was at risk.
+
+The numbers are only as good as what operators report, and the project
+says so wherever it uses them.
 
 ![Map of validated spill reports, LGAs shaded by spill count](docs/img/map.png)
 

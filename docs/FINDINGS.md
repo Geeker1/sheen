@@ -83,6 +83,20 @@ Usable reports per year peak in 2013 and 2014 at about 1,500, fall to 486 in
 2020 and climb back to 952 in 2023. This counts reports, and reporting
 practice changed over the period, so it isn't a clean measure of spills.
 
+## Ogoni and the Bodo spills
+
+Ogoni's four LGAs (Eleme, Gokana, Khana and Tai) have 567 reports that can be
+placed there. 420 are usable: Eleme 174, Gokana 174, Tai 71, Khana 1. Of the
+147 that aren't, 131 are recorded as "no spill", 8 are marked invalid and 8
+have no date.
+
+The register shows how much depends on what operators report. Record 6371,
+SPDC's spill on the Trans Niger Pipeline at Bodo on 28 August 2008, is
+recorded as 1,640 barrels from equipment failure. An independent assessment
+for Amnesty International estimated 103,000 to 311,000 barrels. Neither that
+record nor the December 2008 Bodo spill (record 6445, 2,200 barrels) has
+coordinates, so both are missing from any map made from the register.
+
 ## Spill density and mangrove loss
 
 Across the 30 LGAs with more than 2,000 ha of mangrove in 2007, spills per
