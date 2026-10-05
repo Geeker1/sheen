@@ -8,18 +8,47 @@ type Shading = "spills" | "mangrove";
 // OpenFreeMap: free vector tiles from OpenStreetMap data, no API key.
 const BASEMAP = "https://tiles.openfreemap.org/styles/positron";
 
-// Sequential ramps: light = low, dark = high.
-const SPILL_FILL: maplibregl.ExpressionSpecification = [
-  "interpolate", ["linear"], ["get", "spills"],
-  0, "#f3efe6", 10, "#e8c9a0", 50, "#d4914f", 200, "#a8521e", 800, "#5c2408",
+// Colour stops shared by the map fill and its key: [value, colour, label].
+type Stop = [number, string, string];
+const SPILL_STOPS: Stop[] = [
+  [0, "#f3efe6", "0"], [10, "#e8c9a0", "10"], [50, "#d4914f", "50"],
+  [200, "#a8521e", "200"], [800, "#5c2408", "800+"],
 ];
-const MANGROVE_FILL: maplibregl.ExpressionSpecification = [
+const MANGROVE_STOPS: Stop[] = [
+  [-10, "#8c2d04", "-10%"], [-3, "#e6a26b", "-3%"], [0, "#f3efe6", "0"],
+  [3, "#7fbf8f", "+3%"], [10, "#1b6b3a", "+10%"],
+];
+const ramp = (stops: Stop[]) => stops.flatMap(([v, c]) => [v, c]);
+
+const SPILL_FILL = [
+  "interpolate", ["linear"], ["get", "spills"], ...ramp(SPILL_STOPS),
+] as maplibregl.ExpressionSpecification;
+// LGAs with no mangrove in 2007 get the neutral colour.
+const MANGROVE_FILL = [
   "interpolate", ["linear"],
   ["case", [">", ["get", "mangrove_ha_2007"], 0],
     ["*", 100, ["/", ["-", ["get", "mangrove_ha_2020"], ["get", "mangrove_ha_2007"]], ["get", "mangrove_ha_2007"]]],
     0],
-  -10, "#8c2d04", -3, "#e6a26b", 0, "#f3efe6", 3, "#7fbf8f", 10, "#1b6b3a",
-];
+  ...ramp(MANGROVE_STOPS),
+] as maplibregl.ExpressionSpecification;
+
+function ColourKey({ shading }: { shading: Shading }) {
+  const stops = shading === "spills" ? SPILL_STOPS : MANGROVE_STOPS;
+  return (
+    <div className="colour-key">
+      <div className="key-title">
+        {shading === "spills" ? "Usable spill reports per LGA" : "Change in mangrove area, 2007 to 2020"}
+      </div>
+      <div className="key-bar" style={{ background: `linear-gradient(to right, ${stops.map((s) => s[1]).join(", ")})` }} />
+      <div className="key-labels">
+        {stops.map((s) => <span key={s[2]}>{s[2]}</span>)}
+      </div>
+      {shading === "mangrove" && (
+        <div className="key-ends"><span>Lost</span><span>Pale: no change or no mangrove</span><span>Gained</span></div>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const mapEl = useRef<HTMLDivElement>(null);
@@ -127,8 +156,8 @@ export default function App() {
         <header>
           <h1>Sheen</h1>
           <p className="lede">
-            Oil spills reported to NOSDRA in the Niger Delta, checked for data quality and set against
-            mangrove cover.
+            Nigeria's official oil spill reports for the Niger Delta, checked for errors and
+            mapped.
           </p>
         </header>
 
@@ -150,6 +179,8 @@ export default function App() {
           <label><input type="radio" checked={shading === "mangrove"} onChange={() => setShading("mangrove")} />
             Mangrove change 2007–2020</label>
         </fieldset>
+
+        <ColourKey shading={shading} />
 
         <p className="legend">
           <span className="dot solid" /> reported location <span className="dot hollow" /> corrected location
@@ -198,10 +229,6 @@ export default function App() {
           <p className="hint">Click a spill to see how its record was checked and placed.</p>
         )}
 
-        <footer>
-          Data: NOSDRA Oil Spill Monitor; OCHA COD-AB; Global Mangrove Watch v3; OpenStreetMap.
-          Exposure is proximity, not measured damage.
-        </footer>
       </aside>
       <div ref={mapEl} className="map" />
     </div>
