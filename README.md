@@ -177,7 +177,6 @@ to check everything by hand.
 - [DECISIONS.md](docs/DECISIONS.md): why it's built the way it is
 - [DATA_SOURCES.md](docs/DATA_SOURCES.md): where the data comes from
 - [TESTING.md](docs/TESTING.md): how to check it works
-- [WEAKNESSES.md](docs/WEAKNESSES.md): what isn't right yet
 
 ## Data
 
