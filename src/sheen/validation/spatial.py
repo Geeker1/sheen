@@ -6,18 +6,6 @@ Distances are in metres using UTM zone 32N, which is accurate enough across
 the whole Delta.
 """
 
-# The part of the country each grid is meant for. Nigeria's three grid zones
-# put the same numbers 4 to 9 km apart.
-ZONE_SQL = """
-    CASE c.srid
-        WHEN 26391 THEN ST_X(c.geom) <  6.5
-        WHEN 26392 THEN ST_X(c.geom) >= 6.5 AND ST_X(c.geom) < 10.5
-        WHEN 26393 THEN ST_X(c.geom) >= 10.5
-        WHEN 32631 THEN ST_X(c.geom) <  6.0
-        WHEN 32632 THEN ST_X(c.geom) >= 6.0 AND ST_X(c.geom) < 12.0
-        ELSE true
-    END"""
-
 # Which reading to prefer when everything else is equal.
 METHOD_PRIORITY = {"reported": 0, "swapped": 1, "dms": 2, "reprojected": 3, "decimal_shift": 4}
 
@@ -40,73 +28,66 @@ STEPS: list[tuple[str, str]] = [
     ),
     ("nigeria_edge_index", "CREATE INDEX ON nga_edge USING gist (geom_utm)"),
     (
-        "score_candidates",
+        # One row per possible reading, with plain true/false facts about where it
+        # lands. None of these can be empty: Postgres sorts empty values first,
+        # which once pushed a wrong reading to the top.
+        "check_readings",
         """
-            CREATE TEMP TABLE scored ON COMMIT DROP AS
-            SELECT c.*,
-                   """
-        + ZONE_SQL
-        + """ AS in_own_zone,
-                   st.state_code AS landed_state,
-                   -- Is it near an area with the name the report gives? (Within a
-                   -- few km, because the grid zones disagree by that much.)
-                   (c.method <> 'reported' AND s.lga_reported IS NOT NULL AND EXISTS (
-                       SELECT 1 FROM ref.admin_areas l
-                       WHERE l.level = 2
-                         AND ref.lga_name_similarity(s.lga_reported, l.name) >= %(lga_min_similarity)s
-                         AND ST_DWithin(l.geom_utm, ST_Transform(c.geom, 32632), %(lga_tie_break_m)s)
-                   )) AS near_reported_lga,
-                   (st.pcode IS NOT NULL) AS on_land,
-                   (st.pcode IS NULL
-                    AND ST_Y(c.geom) <= %(offshore_max_lat)s
-                    AND ST_X(c.geom) BETWEEN %(offshore_min_lon)s AND %(offshore_max_lon)s
-                    AND ST_DWithin(ST_Transform(c.geom, 32632), nga.geom_utm,
-                                   %(offshore_max_m)s)) AS in_waters
+            CREATE TEMP TABLE readings ON COMMIT DROP AS
+            SELECT c.spill_id, c.method, c.priority, c.srid, c.geom,
+                   s.state_code IS NOT NULL AS state_given,
+                   s.lga_reported IS NOT NULL AS lga_given,
+                   state.pcode IS NOT NULL AS on_land,
+                   coalesce(state.state_code = s.state_code, false) AS in_reported_state,
+                   state.pcode IS NULL
+                       AND ST_Y(c.geom) <= %(offshore_max_lat)s
+                       AND ST_X(c.geom) BETWEEN %(offshore_min_lon)s AND %(offshore_max_lon)s
+                       AND ST_DWithin(ST_Transform(c.geom, 32632), nga.geom_utm, %(offshore_max_m)s)
+                       AS at_sea,
+                   -- Each grid is meant for one part of the country.
+                   coalesce(ST_X(c.geom) >= zone.min_lon AND ST_X(c.geom) < zone.max_lon, true)
+                       AS in_own_zone,
+                   -- Near an area with the name the report gives? Only worked out for
+                   -- fixes, and within a few km because the grid zones disagree by that much.
+                   c.method <> 'reported' AND s.lga_reported IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM ref.admin_areas area
+                       WHERE area.level = 2
+                         AND ref.lga_name_similarity(s.lga_reported, area.name) >= %(lga_min_similarity)s
+                         AND ST_DWithin(area.geom_utm, ST_Transform(c.geom, 32632), %(lga_tie_break_m)s)
+                   ) AS near_reported_lga
             FROM cands c
             JOIN clean.spills s USING (spill_id)
             CROSS JOIN nga
-            LEFT JOIN ref.admin_areas st
-                   ON st.level = 1 AND ST_Intersects(st.geom, c.geom);
+            LEFT JOIN ref.admin_areas state
+                   ON state.level = 1 AND ST_Intersects(state.geom, c.geom)
+            LEFT JOIN (VALUES (26391, -180, 6.5), (26392, 6.5, 10.5), (26393, 10.5, 180),
+                              (32631, -180, 6.0), (32632, 6.0, 12.0)) AS zone (srid, min_lon, max_lon)
+                   ON zone.srid = c.srid
         """,
     ),
     (
+        # For each report, keep the best reading that's allowed.
         "choose_location",
         """
-            -- A fix is only kept if it agrees with the report: it lands in the
-            -- state the report names, or near the area it names if there's no
-            -- state. Empty values become false, because Postgres sorts them first.
-            WITH flags AS (
-                SELECT sc.*,
-                       coalesce(sc.on_land OR sc.in_waters, false) AS plausible,
-                       coalesce(sc.landed_state = s.state_code, false) AS in_reported_state,
-                       (s.state_code IS NULL AND s.lga_reported IS NULL) AS nothing_reported,
-                       s.state_code AS reported_state
-                FROM scored sc JOIN clean.spills s USING (spill_id)
-            ),
-            ranked AS (
-                SELECT f.*,
-                       -- A state beats an area name, because area names repeat across states.
-                       CASE WHEN f.reported_state IS NOT NULL THEN f.in_reported_state
-                            ELSE f.near_reported_lga OR f.nothing_reported END AS corroborated,
-                       row_number() OVER (
-                           PARTITION BY f.spill_id
-                           ORDER BY
-                             -- The location as reported wins whenever it makes sense.
-                             (f.method = 'reported' AND f.plausible) DESC,
-                             f.in_reported_state DESC,
-                             f.near_reported_lga DESC,
-                             f.in_own_zone DESC,
-                             f.on_land DESC,
-                             f.in_waters DESC,
-                             f.priority
-                       ) AS rn
-                FROM flags f
-            )
             UPDATE clean.spills s
-            SET geom = r.geom, geom_method = r.method
-            FROM ranked r
-            WHERE r.spill_id = s.spill_id AND r.rn = 1 AND r.plausible
-              AND (r.method = 'reported' OR r.corroborated);
+            SET geom = best.geom, geom_method = best.method
+            FROM (
+                SELECT DISTINCT ON (spill_id) spill_id, geom, method
+                FROM readings
+                WHERE (on_land OR at_sea)
+                  AND (method = 'reported'                          -- as published
+                       OR in_reported_state                         -- a fix in the state it names
+                       OR (NOT state_given AND near_reported_lga)   -- no state: near the area it names
+                       OR (NOT state_given AND NOT lga_given))      -- the report names neither
+                ORDER BY spill_id,
+                         method = 'reported' DESC,  -- the published location if it makes sense
+                         in_reported_state DESC,    -- a state beats an area name; names repeat
+                         near_reported_lga DESC,
+                         in_own_zone DESC,
+                         on_land DESC,
+                         priority
+            ) best
+            WHERE best.spill_id = s.spill_id
         """,
     ),
     (
